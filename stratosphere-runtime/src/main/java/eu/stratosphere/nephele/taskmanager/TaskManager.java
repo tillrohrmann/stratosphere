@@ -50,7 +50,6 @@ import eu.stratosphere.configuration.ConfigConstants;
 import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.configuration.GlobalConfiguration;
 import eu.stratosphere.nephele.deployment.TaskDeploymentDescriptor;
-import eu.stratosphere.nephele.execution.Environment;
 import eu.stratosphere.nephele.execution.ExecutionState;
 import eu.stratosphere.nephele.execution.RuntimeEnvironment;
 import eu.stratosphere.nephele.execution.librarycache.LibraryCacheManager;
@@ -61,7 +60,6 @@ import eu.stratosphere.nephele.executiongraph.ExecutionVertexID;
 import eu.stratosphere.nephele.instance.HardwareDescription;
 import eu.stratosphere.nephele.instance.HardwareDescriptionFactory;
 import eu.stratosphere.nephele.instance.InstanceConnectionInfo;
-import eu.stratosphere.nephele.io.channels.ChannelID;
 import eu.stratosphere.nephele.ipc.RPC;
 import eu.stratosphere.nephele.ipc.Server;
 import eu.stratosphere.nephele.jobgraph.JobID;
@@ -77,11 +75,10 @@ import eu.stratosphere.nephele.protocols.TaskOperationProtocol;
 import eu.stratosphere.nephele.services.iomanager.IOManager;
 import eu.stratosphere.nephele.services.memorymanager.MemoryManager;
 import eu.stratosphere.nephele.services.memorymanager.spi.DefaultMemoryManager;
-import eu.stratosphere.nephele.taskmanager.bytebuffered.ByteBufferedChannelManager;
-import eu.stratosphere.nephele.taskmanager.bytebuffered.InsufficientResourcesException;
-import eu.stratosphere.nephele.taskmanager.runtime.ExecutorThreadFactory;
-import eu.stratosphere.nephele.taskmanager.runtime.RuntimeTask;
 import eu.stratosphere.nephele.util.SerializableArrayList;
+import eu.stratosphere.runtime.io.channels.ChannelID;
+import eu.stratosphere.runtime.io.network.ChannelManager;
+import eu.stratosphere.runtime.io.network.InsufficientResourcesException;
 import eu.stratosphere.util.StringUtils;
 
 /**
@@ -122,10 +119,10 @@ public class TaskManager implements TaskOperationProtocol {
 	private final static int DEFAULTPERIODICTASKSINTERVAL = 2000;
 
 	/**
-	 * The instance of the {@link ByteBufferedChannelManager} which is responsible for
+	 * The instance of the {@link eu.stratosphere.nephele.taskmanager.io.bytebuffered.ChannelManager} which is responsible for
 	 * setting up and cleaning up the byte buffered channels of the tasks.
 	 */
-	private final ByteBufferedChannelManager byteBufferedChannelManager;
+	private final ChannelManager channelManager;
 
 	/**
 	 * Instance of the task manager profile if profiling is enabled.
@@ -265,16 +262,24 @@ public class TaskManager implements TaskOperationProtocol {
 
 		checkTempDirs(tmpDirPaths);
 
+		// Initialize network buffer pool
+		int numBuffers = GlobalConfiguration.getInteger(
+				ConfigConstants.TASK_MANAGER_NETWORK_NUM_BUFFERS_KEY,
+				ConfigConstants.DEFAULT_TASK_MANAGER_NETWORK_NUM_BUFFERS);
+
+		int bufferSize = GlobalConfiguration.getInteger(
+				ConfigConstants.TASK_MANAGER_NETWORK_BUFFER_SIZE_KEY,
+				ConfigConstants.DEFAULT_TASK_MANAGER_NETWORK_BUFFER_SIZE);
+
 		// Initialize the byte buffered channel manager
-		ByteBufferedChannelManager byteBufferedChannelManager = null;
+		ChannelManager channelManager = null;
 		try {
-			byteBufferedChannelManager = new ByteBufferedChannelManager(this.lookupService,
-				this.localInstanceConnectionInfo);
+			channelManager = new ChannelManager(this.lookupService, this.localInstanceConnectionInfo, numBuffers, bufferSize);
 		} catch (IOException ioe) {
 			LOG.error(StringUtils.stringifyException(ioe));
 			throw new Exception("Failed to instantiate Byte-buffered channel manager. " + ioe.getMessage(), ioe);
 		}
-		this.byteBufferedChannelManager = byteBufferedChannelManager;
+		this.channelManager = channelManager;
 
 		// Determine hardware description
 		HardwareDescription hardware = HardwareDescriptionFactory.extractFromSystem(taskManagersPerJVM);
@@ -602,13 +607,11 @@ public class TaskManager implements TaskOperationProtocol {
 			}
 
 			final Configuration jobConfiguration = tdd.getJobConfiguration();
-			final Set<ChannelID> activeOutputChannels = null; // TODO: Fix me
 
 			// Register the task
 			Task task;
 			try {
-				task = createAndRegisterTask(vertexID, jobConfiguration, re,
-					activeOutputChannels);
+				task = createAndRegisterTask(vertexID, jobConfiguration, re);
 			} catch (InsufficientResourcesException e) {
 				final TaskSubmissionResult result = new TaskSubmissionResult(vertexID,
 					AbstractTaskResult.ReturnCode.INSUFFICIENT_RESOURCES);
@@ -648,14 +651,10 @@ public class TaskManager implements TaskOperationProtocol {
 	 *        the job configuration that has been attached to the original job graph
 	 * @param environment
 	 *        the environment of the task to be registered
-	 * @param initialCheckpointState
-	 *        the task's initial checkpoint state
-	 * @param activeOutputChannels
-	 *        the set of initially active output channels
 	 * @return the task to be started or <code>null</code> if a task with the same ID was already running
 	 */
 	private Task createAndRegisterTask(final ExecutionVertexID id, final Configuration jobConfiguration,
-			final RuntimeEnvironment environment, final Set<ChannelID> activeOutputChannels)
+			final RuntimeEnvironment environment)
 					throws InsufficientResourcesException, IOException {
 
 		if (id == null) {
@@ -673,10 +672,10 @@ public class TaskManager implements TaskOperationProtocol {
 			final Task runningTask = this.runningTasks.get(id);
 			boolean registerTask = true;
 			if (runningTask == null) {
-				task = new RuntimeTask(id, environment, this);
+				task = new Task(id, environment, this);
 			} else {
 
-				if (runningTask instanceof RuntimeTask) {
+				if (runningTask instanceof Task) {
 					// Task is already running
 					return null;
 				} else {
@@ -687,10 +686,9 @@ public class TaskManager implements TaskOperationProtocol {
 
 			}
 
-			final Environment ee = task.getEnvironment();
 			if (registerTask) {
 				// Register the task with the byte buffered channel manager
-				this.byteBufferedChannelManager.register(task, activeOutputChannels);
+				this.channelManager.register(task);
 
 				boolean enableProfiling = false;
 				if (this.profiler != null && jobConfiguration.getBoolean(ProfilingUtils.PROFILE_JOB_KEY, true)) {
@@ -727,7 +725,7 @@ public class TaskManager implements TaskOperationProtocol {
 			}
 
 			// Unregister task from the byte buffered channel manager
-			this.byteBufferedChannelManager.unregister(id, task);
+			this.channelManager.unregister(id, task);
 
 			// Unregister task from profiling
 			task.unregisterProfiler(this.profiler);
@@ -827,7 +825,7 @@ public class TaskManager implements TaskOperationProtocol {
 		}
 
 		// Shut down the network channel manager
-		this.byteBufferedChannelManager.shutdown();
+		this.channelManager.shutdown();
 
 		// Shut down the memory manager
 		if (this.ioManager != null) {
@@ -887,7 +885,7 @@ public class TaskManager implements TaskOperationProtocol {
 	@Override
 	public void logBufferUtilization() throws IOException {
 
-		this.byteBufferedChannelManager.logBufferUtilization();
+		this.channelManager.logBufferUtilization();
 	}
 
 
@@ -910,7 +908,7 @@ public class TaskManager implements TaskOperationProtocol {
 	@Override
 	public void invalidateLookupCacheEntries(final Set<ChannelID> channelIDs) throws IOException {
 
-		this.byteBufferedChannelManager.invalidateLookupCacheEntries(channelIDs);
+		this.channelManager.invalidateLookupCacheEntries(channelIDs);
 	}
 
 	/**
