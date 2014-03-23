@@ -142,7 +142,7 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 		// -------------------------------------------------------------------------------------------------------------
 
 		// register global
-		for (InputGate gate : environment.inputGates()) {
+		for (InputGate<?> gate : environment.inputGates()) {
 			gate.registerGlobalBufferPool(this.globalBufferPool);
 
 			for (int i = 0; i < gate.getNumberOfInputChannels(); i++) {
@@ -306,11 +306,10 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 			Channel channel = this.channels.get(localReceiver);
 			if (channel == null) {
 				try {
-					sendReceiverNotFoundEvent(envelope, localReceiver);
+					throw new IOException("Could not find receiver " + localReceiver);
 				} finally {
 					releaseEnvelope(envelope);
 				}
-				return;
 			}
 
 			if (!channel.isInputChannel()) {
@@ -331,8 +330,7 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 					Channel channel = this.channels.get(receiver);
 
 					if (channel == null) {
-						sendReceiverNotFoundEvent(envelope, receiver);
-						continue;
+						throw new IOException("Could not find receiver " + receiver);
 					}
 
 					if (!channel.isInputChannel()) {
@@ -340,14 +338,13 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 						continue;
 					}
 
-					final InputChannel inputChannel = (InputChannel) channel;
+					final InputChannel<?> inputChannel = (InputChannel<?>) channel;
 
 					Buffer destBuffer = null;
 					try {
 						try {
 							destBuffer = inputChannel.requestBufferBlocking(srcBuffer.size());
 						} catch (InterruptedException e) {
-							e.printStackTrace();
 							throw new IOException(e.getMessage());
 						}
 						srcBuffer.copyToBuffer(destBuffer);
@@ -389,8 +386,7 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 			Channel receiver = this.channels.get(receiverId);
 
 			if (receiver == null) {
-				sendReceiverNotFoundEvent(envelope, receiverId);
-				continue;
+				throw new IOException("Could not find receiver " + receiverId);
 			}
 
 			receiver.queueEnvelope(envelope);
@@ -409,24 +405,6 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 				this.networkConnectionManager.queueEnvelopeForTransfer(receiver, envelope);
 			}
 		}
-	}
-
-	private void sendReceiverNotFoundEvent(Envelope envelope, ChannelID receiver) throws IOException {
-		if (ReceiverNotFoundEvent.isReceiverNotFoundEvent(envelope)) {
-			LOG.info("Dropping request to send ReceiverNotFoundEvent as response to ReceiverNotFoundEvent");
-			return;
-		}
-
-		JobID jobID = envelope.getJobID();
-
-		Envelope receiverNotFoundEnvelope = ReceiverNotFoundEvent.createEnvelopeWithEvent(jobID, receiver, envelope.getSequenceNumber());
-
-		EnvelopeReceiverList receiverList = getReceiverList(jobID, receiver);
-		if (receiverList == null) {
-			return;
-		}
-
-		processEnvelopeWithoutBuffer(receiverNotFoundEnvelope, receiverList);
 	}
 
 	private void releaseEnvelope(Envelope envelope) {
@@ -633,7 +611,7 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 							+ " is not an input channel context");
 				}
 
-				return (InputChannel) channel;
+				return (InputChannel<?>) channel;
 			}
 		}
 
@@ -659,7 +637,7 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 
 		for (Channel channel : this.channels.values()) {
 			if (channel.isInputChannel()) {
-				((InputChannel) channel).logQueuedEnvelopes();
+				((InputChannel<?>) channel).logQueuedEnvelopes();
 			}
 		}
 	}

@@ -26,7 +26,7 @@ public class Buffer {
 
 	// -----------------------------------------------------------------------------------------------------------------
 
-	public final AtomicBoolean isRecycled;
+	private final AtomicBoolean isRecycled;
 
 	private final AtomicInteger referenceCounter;
 

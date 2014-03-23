@@ -15,13 +15,13 @@ package eu.stratosphere.runtime.io;
 
 import static org.junit.Assert.assertEquals;
 
-import eu.stratosphere.runtime.io.api.DefaultChannelSelector;
+import eu.stratosphere.runtime.io.api.RoundRobinChannelSelector;
 import org.junit.Test;
 
 import eu.stratosphere.core.io.StringRecord;
 
 /**
- * This class checks the functionality of the {@link DefaultChannelSelector} class.
+ * This class checks the functionality of the {@link RoundRobinChannelSelector} class.
  * 
  */
 public class DefaultChannelSelectorTest {
@@ -33,7 +33,7 @@ public class DefaultChannelSelectorTest {
 	public void channelSelect() {
 
 		final StringRecord dummyRecord = new StringRecord("abc");
-		final DefaultChannelSelector<StringRecord> selector = new DefaultChannelSelector<StringRecord>();
+		final RoundRobinChannelSelector<StringRecord> selector = new RoundRobinChannelSelector<StringRecord>();
 		// Test with two channels
 		final int numberOfOutputChannels = 2;
 		int[] selectedChannels = selector.selectChannels(dummyRecord, numberOfOutputChannels);

@@ -23,16 +23,6 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import eu.stratosphere.nephele.execution.librarycache.LibraryCacheManager;
-import eu.stratosphere.runtime.io.Buffer;
-import eu.stratosphere.runtime.io.channels.OutputChannel;
-import eu.stratosphere.runtime.io.gates.GateID;
-import eu.stratosphere.runtime.io.gates.OutputGate;
-import eu.stratosphere.runtime.io.network.bufferprovider.BufferAvailabilityListener;
-import eu.stratosphere.runtime.io.network.bufferprovider.BufferProvider;
-import eu.stratosphere.runtime.io.network.bufferprovider.GlobalBufferPool;
-import eu.stratosphere.runtime.io.network.bufferprovider.LocalBufferPool;
-import eu.stratosphere.runtime.io.network.bufferprovider.LocalBufferPoolOwner;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -41,9 +31,7 @@ import eu.stratosphere.core.io.IOReadableWritable;
 import eu.stratosphere.nephele.deployment.ChannelDeploymentDescriptor;
 import eu.stratosphere.nephele.deployment.GateDeploymentDescriptor;
 import eu.stratosphere.nephele.deployment.TaskDeploymentDescriptor;
-import eu.stratosphere.runtime.io.gates.InputGate;
-import eu.stratosphere.runtime.io.channels.ChannelID;
-import eu.stratosphere.runtime.io.channels.ChannelType;
+import eu.stratosphere.nephele.execution.librarycache.LibraryCacheManager;
 import eu.stratosphere.nephele.jobgraph.JobGraph;
 import eu.stratosphere.nephele.jobgraph.JobID;
 import eu.stratosphere.nephele.protocols.AccumulatorProtocol;
@@ -51,6 +39,18 @@ import eu.stratosphere.nephele.services.iomanager.IOManager;
 import eu.stratosphere.nephele.services.memorymanager.MemoryManager;
 import eu.stratosphere.nephele.template.AbstractInvokable;
 import eu.stratosphere.nephele.template.InputSplitProvider;
+import eu.stratosphere.runtime.io.Buffer;
+import eu.stratosphere.runtime.io.channels.ChannelID;
+import eu.stratosphere.runtime.io.channels.ChannelType;
+import eu.stratosphere.runtime.io.channels.OutputChannel;
+import eu.stratosphere.runtime.io.gates.GateID;
+import eu.stratosphere.runtime.io.gates.InputGate;
+import eu.stratosphere.runtime.io.gates.OutputGate;
+import eu.stratosphere.runtime.io.network.bufferprovider.BufferAvailabilityListener;
+import eu.stratosphere.runtime.io.network.bufferprovider.BufferProvider;
+import eu.stratosphere.runtime.io.network.bufferprovider.GlobalBufferPool;
+import eu.stratosphere.runtime.io.network.bufferprovider.LocalBufferPool;
+import eu.stratosphere.runtime.io.network.bufferprovider.LocalBufferPoolOwner;
 import eu.stratosphere.util.StringUtils;
 
 /**
@@ -164,7 +164,7 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 	 */
 	private final String taskName;
 
-	private LocalBufferPool bufferPool;
+	private LocalBufferPool outputBufferPool;
 
 	/**
 	 * Creates a new runtime environment object which contains the runtime information for the encapsulated Nephele
@@ -766,32 +766,32 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 	}
 
 	@Override
-	public BufferProvider getBufferProvider() {
+	public BufferProvider getOutputBufferProvider() {
 		return this;
 	}
-
+	
 	// -----------------------------------------------------------------------------------------------------------------
 	//                                            BufferProvider methods
 	// -----------------------------------------------------------------------------------------------------------------
-
+	
 	@Override
 	public Buffer requestBuffer(int minBufferSize) throws IOException {
-		return this.bufferPool.requestBuffer(minBufferSize);
+		return this.outputBufferPool.requestBuffer(minBufferSize);
 	}
-
+	
 	@Override
 	public Buffer requestBufferBlocking(int minBufferSize) throws IOException, InterruptedException {
-		return this.bufferPool.requestBufferBlocking(minBufferSize);
+		return this.outputBufferPool.requestBufferBlocking(minBufferSize);
 	}
-
+	
 	@Override
 	public int getBufferSize() {
-		return this.bufferPool.getBufferSize();
+		return this.outputBufferPool.getBufferSize();
 	}
-
+	
 	@Override
 	public boolean registerBufferAvailabilityListener(BufferAvailabilityListener listener) {
-		return this.bufferPool.registerBufferAvailabilityListener(listener);
+		return this.outputBufferPool.registerBufferAvailabilityListener(listener);
 	}
 
 	// -----------------------------------------------------------------------------------------------------------------
@@ -805,18 +805,18 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 
 	@Override
 	public void setDesignatedNumberOfBuffers(int numBuffers) {
-		this.bufferPool.setNumDesignatedBuffers(numBuffers);
+		this.outputBufferPool.setNumDesignatedBuffers(numBuffers);
 	}
 
 	@Override
 	public void clearLocalBufferPool() {
-		this.bufferPool.destroy();
+		this.outputBufferPool.destroy();
 	}
 
 	@Override
 	public void registerGlobalBufferPool(GlobalBufferPool globalBufferPool) {
-		if (this.bufferPool == null) {
-			this.bufferPool = new LocalBufferPool(globalBufferPool, 1);
+		if (this.outputBufferPool == null) {
+			this.outputBufferPool = new LocalBufferPool(globalBufferPool, 1);
 		}
 	}
 
@@ -824,13 +824,13 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 	public void logBufferUtilization() {
 		LOG.info(String.format("\t%s: %d available, %d requested, %d designated",
 				getTaskNameWithIndex(),
-				this.bufferPool.numAvailableBuffers(),
-				this.bufferPool.numRequestedBuffers(),
-				this.bufferPool.numDesignatedBuffers()));
+				this.outputBufferPool.numAvailableBuffers(),
+				this.outputBufferPool.numRequestedBuffers(),
+				this.outputBufferPool.numDesignatedBuffers()));
 	}
 
 	@Override
 	public void reportAsynchronousEvent() {
-		this.bufferPool.reportAsynchronousEvent();
+		this.outputBufferPool.reportAsynchronousEvent();
 	}
 }

@@ -13,6 +13,7 @@
 
 package eu.stratosphere.runtime.io.gates;
 
+import eu.stratosphere.core.io.IOReadableWritable;
 import eu.stratosphere.nephele.deployment.ChannelDeploymentDescriptor;
 import eu.stratosphere.nephele.deployment.GateDeploymentDescriptor;
 import eu.stratosphere.nephele.event.task.AbstractEvent;
@@ -24,7 +25,7 @@ import eu.stratosphere.nephele.jobgraph.JobID;
 
 import java.io.IOException;
 
-public class OutputGate extends Gate {
+public class OutputGate extends Gate<IOReadableWritable> {
 
 	private OutputChannel[] channels;
 
@@ -52,9 +53,10 @@ public class OutputGate extends Gate {
 	}
 
 	public void broadcastBuffer(Buffer buffer) throws IOException, InterruptedException {
-		for (OutputChannel channel : this.channels) {
-			channel.sendBuffer(buffer);
+		for (int i = 1; i < this.channels.length; i++) {
+			channels[i].sendBuffer(buffer.duplicate());
 		}
+		channels[0].sendBuffer(buffer);
 	}
 
 	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {

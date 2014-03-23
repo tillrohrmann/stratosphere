@@ -27,7 +27,7 @@ public class SpanningSerializer<T extends IOReadableWritable> implements RecordS
 	private static final boolean CHECKED = true;
 
 	/** Intermediate data serialization */
-	private final DataOutputSerializer serializer;
+	private final DataOutputSerializer serializationBuffer;
 
 	/** Intermediate buffer for data serialization */
 	private ByteBuffer dataBuffer;
@@ -45,13 +45,13 @@ public class SpanningSerializer<T extends IOReadableWritable> implements RecordS
 	private int limit;
 
 	public SpanningSerializer() {
-		this.serializer = new DataOutputSerializer(128);
+		this.serializationBuffer = new DataOutputSerializer(128);
 
 		this.lengthBuffer = ByteBuffer.allocate(4);
 		this.lengthBuffer.order(ByteOrder.BIG_ENDIAN);
 
 		// ensure initial state with hasRemaining false (for correct setNextBuffer logic)
-		this.dataBuffer = this.serializer.wrapAsByteBuffer();
+		this.dataBuffer = this.serializationBuffer.wrapAsByteBuffer();
 		this.lengthBuffer.position(4);
 	}
 
@@ -63,14 +63,14 @@ public class SpanningSerializer<T extends IOReadableWritable> implements RecordS
 			}
 		}
 
-		this.serializer.clear();
+		this.serializationBuffer.clear();
 		this.lengthBuffer.clear();
 
 		// write data and length
-		record.write(this.serializer);
-		this.lengthBuffer.putInt(0, this.serializer.length());
+		record.write(this.serializationBuffer);
+		this.lengthBuffer.putInt(0, this.serializationBuffer.length());
 
-		this.dataBuffer = this.serializer.wrapAsByteBuffer();
+		this.dataBuffer = this.serializationBuffer.wrapAsByteBuffer();
 
 		// Copy from intermediate buffers to current target memory segment
 		copyToTargetBufferFrom(this.lengthBuffer);

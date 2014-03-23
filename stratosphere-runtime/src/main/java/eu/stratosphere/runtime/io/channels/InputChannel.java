@@ -23,7 +23,6 @@ import eu.stratosphere.runtime.io.network.bufferprovider.BufferAvailabilityListe
 import eu.stratosphere.runtime.io.network.bufferprovider.BufferProvider;
 import eu.stratosphere.runtime.io.network.envelope.Envelope;
 import eu.stratosphere.runtime.io.gates.InputGate;
-import eu.stratosphere.runtime.io.network.ReceiverNotFoundEvent;
 import eu.stratosphere.runtime.io.serialization.AdaptiveSpanningDeserializer;
 import eu.stratosphere.runtime.io.serialization.RecordDeserializer;
 import eu.stratosphere.runtime.io.serialization.RecordDeserializer.DeserializationResult;
@@ -314,10 +313,6 @@ public class InputChannel<T extends IOReadableWritable> extends Channel implemen
 
 	@Override
 	public void queueEnvelope(Envelope envelope) {
-		if (ReceiverNotFoundEvent.isReceiverNotFoundEvent(envelope)) {
-			return;
-		}
-
 		// The sequence number of the envelope to be queued
 		final int sequenceNumber = envelope.getSequenceNumber();
 

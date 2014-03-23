@@ -334,7 +334,7 @@ public class MockEnvironment implements Environment, BufferProvider, LocalBuffer
 	}
 
 	@Override
-	public BufferProvider getBufferProvider() {
+	public BufferProvider getOutputBufferProvider() {
 		return this;
 	}
 }

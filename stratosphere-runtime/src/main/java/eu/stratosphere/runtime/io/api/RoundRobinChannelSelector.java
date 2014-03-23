@@ -22,7 +22,7 @@ import eu.stratosphere.core.io.IOReadableWritable;
  * @param <T>
  *        the type of record which is sent through the attached output gate
  */
-public class DefaultChannelSelector<T extends IOReadableWritable> implements ChannelSelector<T> {
+public class RoundRobinChannelSelector<T extends IOReadableWritable> implements ChannelSelector<T> {
 
 	/**
 	 * Stores the index of the channel to send the next record to.
@@ -32,7 +32,7 @@ public class DefaultChannelSelector<T extends IOReadableWritable> implements Cha
 	/**
 	 * Constructs a new default channel selector.
 	 */
-	public DefaultChannelSelector() {
+	public RoundRobinChannelSelector() {
 		this.nextChannelToSendTo[0] = 0;
 	}
 

@@ -19,14 +19,12 @@ import eu.stratosphere.nephele.jobgraph.JobID;
 import eu.stratosphere.runtime.io.Buffer;
 import eu.stratosphere.runtime.io.network.envelope.Envelope;
 import eu.stratosphere.runtime.io.gates.OutputGate;
-import eu.stratosphere.runtime.io.network.ReceiverNotFoundEvent;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Queue;
-import java.util.concurrent.LinkedBlockingDeque;
+
 
 public class OutputChannel extends Channel {
 
@@ -34,15 +32,11 @@ public class OutputChannel extends Channel {
 
 	private final OutputGate outputGate;
 
-	private final Queue<AbstractEvent> incomingEvents;
+	private boolean senderCloseRequested;
 
-	private boolean isCloseRequested;
-
-	private boolean isCloseAcknowledged;
+	private boolean receiverCloseRequested;
 
 	private int seqNum;
-
-	private int seqNumLastNotFound;
 
 	// -----------------------------------------------------------------------------------------------------------------
 
@@ -59,8 +53,6 @@ public class OutputChannel extends Channel {
 		super(index, id, connectedId, type);
 
 		this.outputGate = outputGate;
-		this.incomingEvents = new LinkedBlockingDeque<AbstractEvent>();
-		this.seqNumLastNotFound = -1;
 	}
 
 	// -----------------------------------------------------------------------------------------------------------------
@@ -68,23 +60,15 @@ public class OutputChannel extends Channel {
 	// -----------------------------------------------------------------------------------------------------------------
 
 	public void sendBuffer(Buffer buffer) throws IOException, InterruptedException {
-		processIncomingEvents();
-
-		if (this.isCloseRequested) {
-			throw new IllegalStateException(String.format("Channel %s already requested to be closed.", getID()));
-		}
-
+		checkStatus();
+		
 		Envelope envelope = createNextEnvelope();
 		envelope.setBuffer(buffer);
 		this.envelopeDispatcher.dispatchFromOutputChannel(envelope);
 	}
 
 	public void sendEvent(AbstractEvent event) throws IOException, InterruptedException {
-		processIncomingEvents();
-
-		if (this.isCloseRequested) {
-			throw new IllegalStateException(String.format("Channel %s already requested to be closed.", getID()));
-		}
+		checkStatus();
 
 		Envelope envelope = createNextEnvelope();
 		envelope.serializeEventList(Arrays.asList(event));
@@ -92,11 +76,7 @@ public class OutputChannel extends Channel {
 	}
 
 	public void sendBufferAndEvent(Buffer buffer, AbstractEvent event) throws IOException, InterruptedException {
-		processIncomingEvents();
-
-		if (this.isCloseRequested) {
-			throw new IllegalStateException(String.format("Channel %s already requested to be closed.", getID()));
-		}
+		checkStatus();
 
 		Envelope envelope = createNextEnvelope();
 		envelope.setBuffer(buffer);
@@ -115,40 +95,20 @@ public class OutputChannel extends Channel {
 		}
 
 		for (AbstractEvent event : envelope.deserializeEvents()) {
-			if (event instanceof AbstractTaskEvent) {
-				processEvent(event);
-			} else {
-				this.incomingEvents.offer(event);
-			}
-		}
-	}
-
-	public void processIncomingEvents() {
-		// sync processing
-		AbstractEvent event = this.incomingEvents.poll();
-		while (event != null) {
-			if (event instanceof ChannelCloseEvent) {
-				if (!this.isCloseRequested) {
-					throw new IllegalStateException("Received channel close ACK without close request.");
+			if (event.getClass() == ChannelCloseEvent.class) {
+				this.receiverCloseRequested = true;
+				LOG.debug("OutputChannel received close event from target.");
+			} 
+			else if (event instanceof AbstractTaskEvent) {
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("OutputChannel received task event: " + event);
 				}
-
-				this.isCloseAcknowledged = true;
-			} else if (event instanceof ReceiverNotFoundEvent) {
-				this.seqNumLastNotFound = ((ReceiverNotFoundEvent) event).getSequenceNumber();
-			} else if (event instanceof AbstractTaskEvent) {
-				throw new IllegalStateException("Received synchronous task event: " + event);
+				
+				this.outputGate.deliverEvent((AbstractTaskEvent) event);
 			}
-
-			event = this.incomingEvents.poll();
-		}
-	}
-
-	public void processEvent(AbstractEvent event) {
-		// async processing
-		if (event instanceof AbstractTaskEvent) {
-			this.outputGate.deliverEvent((AbstractTaskEvent) event);
-		} else {
-			LOG.error("Channel " + getID() + " received unknown event " + event);
+			else {
+				throw new RuntimeException("OutputChannel received an event that is neither close nor task event.");
+			}
 		}
 	}
 
@@ -157,11 +117,11 @@ public class OutputChannel extends Channel {
 	// -----------------------------------------------------------------------------------------------------------------
 
 	public void requestClose() throws IOException, InterruptedException {
-		if (this.isCloseRequested) {
+		if (this.senderCloseRequested) {
 			return;
 		}
 
-		this.isCloseRequested = true;
+		this.senderCloseRequested = true;
 
 		Envelope envelope = createNextEnvelope();
 		envelope.serializeEventList(Arrays.asList(new ChannelCloseEvent()));
@@ -170,13 +130,7 @@ public class OutputChannel extends Channel {
 
 	@Override
 	public boolean isClosed() throws IOException, InterruptedException {
-		if (this.isCloseRequested) {
-			processIncomingEvents();
-
-			return this.isCloseAcknowledged || (this.seqNumLastNotFound + 1) == this.seqNum;
-		}
-
-		return false;
+		return this.senderCloseRequested && this.receiverCloseRequested;
 	}
 
 	// -----------------------------------------------------------------------------------------------------------------
@@ -189,6 +143,15 @@ public class OutputChannel extends Channel {
 	@Override
 	public JobID getJobID() {
 		return this.outputGate.getJobID();
+	}
+	
+	private void checkStatus() throws IOException {
+		if (this.senderCloseRequested) {
+			throw new IllegalStateException(String.format("Channel %s already requested to be closed.", getID()));
+		}
+		if (this.receiverCloseRequested) {
+			throw new ReceiverAlreadyClosedException();
+		}
 	}
 
 	private Envelope createNextEnvelope() {

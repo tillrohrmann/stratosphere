@@ -46,7 +46,7 @@ public class RecordWriter<T extends IOReadableWritable> extends BufferWriter {
 	// -----------------------------------------------------------------------------------------------------------------
 
 	public RecordWriter(AbstractTask task) {
-		this((AbstractInvokable) task, null);
+		this((AbstractInvokable) task, new RoundRobinChannelSelector<T>());
 	}
 
 	public RecordWriter(AbstractTask task, ChannelSelector<T> channelSelector) {
@@ -54,7 +54,7 @@ public class RecordWriter<T extends IOReadableWritable> extends BufferWriter {
 	}
 
 	public RecordWriter(AbstractInputTask<?> task) {
-		this((AbstractInvokable) task, null);
+		this((AbstractInvokable) task, new RoundRobinChannelSelector<T>());
 	}
 
 	public RecordWriter(AbstractInputTask<?> task, ChannelSelector<T> channelSelector) {
@@ -67,8 +67,8 @@ public class RecordWriter<T extends IOReadableWritable> extends BufferWriter {
 		// initialize the gate
 		super(invokable);
 
-		this.bufferPool = invokable.getEnvironment().getBufferProvider();
-		this.channelSelector = (channelSelector == null) ? new DefaultChannelSelector<T>() : channelSelector;
+		this.bufferPool = invokable.getEnvironment().getOutputBufferProvider();
+		this.channelSelector = channelSelector;
 	}
 
 	// -----------------------------------------------------------------------------------------------------------------

@@ -222,5 +222,5 @@ public interface Environment {
 	 * @return Buffer provider for the output side of the network stack
 	 * @see eu.stratosphere.runtime.io.api.RecordWriter
 	 */
-	BufferProvider getBufferProvider();
+	BufferProvider getOutputBufferProvider();
 }
