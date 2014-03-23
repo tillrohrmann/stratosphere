@@ -76,7 +76,14 @@ public abstract class JavaProgramTestBase extends AbstractTestBase {
 	public void testJob() throws Exception {
 		// pre-submit
 		try {
+			long start = System.nanoTime();
+			
 			preSubmit();
+			
+			if (printTimings) {
+				long stop = System.nanoTime();
+				System.out.println("Pre-submit took " + ((stop - start) / 1000000) + " msecs");
+			}
 		}
 		catch (Exception e) {
 			System.err.println(e.getMessage());
@@ -85,7 +92,7 @@ public abstract class JavaProgramTestBase extends AbstractTestBase {
 		}
 		
 		// prepare the test environment
-		TestEnvironment env = new TestEnvironment(this.executor, this.degreeOfParallelism);
+		TestEnvironment env = new TestEnvironment(this.executor, this.degreeOfParallelism, this.printTimings);
 		env.setAsContext();
 		
 		// call the test program
@@ -103,7 +110,14 @@ public abstract class JavaProgramTestBase extends AbstractTestBase {
 		
 		// post-submit
 		try {
+			long start = System.nanoTime();
+			
 			postSubmit();
+			
+			if (printTimings) {
+				long stop = System.nanoTime();
+				System.out.println("Post-submit took " + ((stop - start) / 1000000) + " msecs");
+			}
 		}
 		catch (Exception e) {
 			System.err.println(e.getMessage());
@@ -116,25 +130,45 @@ public abstract class JavaProgramTestBase extends AbstractTestBase {
 
 		private final NepheleMiniCluster executor;
 		
+		private final boolean printTimings;
+		
 		private JobExecutionResult latestResult;
 		
 		
 		private TestEnvironment(NepheleMiniCluster executor, int degreeOfParallelism) {
+			this(executor, degreeOfParallelism, false);
+		}
+		
+		private TestEnvironment(NepheleMiniCluster executor, int degreeOfParallelism, boolean printTimings) {
 			this.executor = executor;
+			this.printTimings = printTimings;
 			setDegreeOfParallelism(degreeOfParallelism);
 		}
 
 		@Override
 		public JobExecutionResult execute(String jobName) throws Exception {
 			try {
+				long compileStart = System.nanoTime();
 				OptimizedPlan op = compileProgram(jobName);
 				
 				NepheleJobGraphGenerator jgg = new NepheleJobGraphGenerator();
 				JobGraph jobGraph = jgg.compileJobGraph(op);
 				
+				if (printTimings) {
+					long compileStop = System.nanoTime();
+					System.out.println("Compilation took " + ((compileStop - compileStart) / 1000000) + " msecs");
+				}
+				
 				JobClient client = this.executor.getJobClient(jobGraph);
 				client.setConsoleStreamForReporting(AbstractTestBase.getNullPrintStream());
+				
+				long execStart = System.nanoTime();
 				JobExecutionResult result = client.submitJobAndWait();
+				
+				if (printTimings) {
+					long execStop = System.nanoTime();
+					System.out.println("Execution took " + ((execStop - execStart) / 1000000) + " msecs");
+				}
 				
 				this.latestResult = result;
 				return result;

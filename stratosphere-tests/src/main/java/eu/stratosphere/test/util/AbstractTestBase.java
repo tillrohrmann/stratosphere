@@ -51,9 +51,12 @@ public abstract class AbstractTestBase {
 	
 	protected final Configuration config;
 	
+	private final List<File> tempFiles;
+	
+	
 	protected NepheleMiniCluster executor;
 	
-	private final List<File> tempFiles;
+	protected boolean printTimings;
 	
 		
 	public AbstractTestBase(Configuration config) {
@@ -77,10 +80,18 @@ public abstract class AbstractTestBase {
 	
 	@Before
 	public void startCluster() throws Exception {
+		long start = System.nanoTime();
+		
 		this.executor = new NepheleMiniCluster();
 		this.executor.setDefaultOverwriteFiles(true);
 		
 		this.executor.start();
+		
+		long stop = System.nanoTime();
+		
+		if (printTimings) {
+			System.out.println("Starting local cluster took " + ((stop - start) / 1000000) + " msecs");
+		}
 	}
 
 	@After
