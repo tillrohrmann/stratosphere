@@ -1,4 +1,5 @@
 /***********************************************************************************************************************
+ *
  * Copyright (C) 2010-2013 by the Stratosphere project (http://stratosphere.eu)
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
@@ -9,32 +10,14 @@
  * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
+ *
  **********************************************************************************************************************/
+package eu.stratosphere.nephele.execution;
 
-package eu.stratosphere.runtime.io.serialization.types;
 
-public enum SerializationTestTypeFactory {
-	BOOLEAN(new BooleanType()),
-	BYTE_ARRAY(new ByteArrayType()),
-	BYTE_SUB_ARRAY(new ByteSubArrayType()),
-	BYTE(new ByteType()),
-	CHAR(new CharType()),
-	DOUBLE(new DoubleType()),
-	FLOAT(new FloatType()),
-	INT(new IntType()),
-	LONG(new LongType()),
-	SHORT(new ShortType()),
-	UNSIGNED_BYTE(new UnsignedByteType()),
-	UNSIGNED_SHORT(new UnsignedShortType()),
-	STRING(new AsciiStringType());
-
-	private final SerializationTestType factory;
-
-	SerializationTestTypeFactory(SerializationTestType type) {
-		this.factory = type;
-	}
-
-	public SerializationTestType factory() {
-		return this.factory;
-	}
+/**
+ * Thrown to trigger a canceling of the executing task. Intended to cause a cancelled status, rather than a failed status.
+ */
+public class CancelTaskException extends RuntimeException {
+	private static final long serialVersionUID = 1L;
 }

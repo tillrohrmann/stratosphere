@@ -29,6 +29,7 @@ import eu.stratosphere.core.fs.FileSystem;
 import eu.stratosphere.core.fs.FileSystem.WriteMode;
 import eu.stratosphere.core.fs.Path;
 import eu.stratosphere.core.io.IOReadableWritable;
+import eu.stratosphere.nephele.execution.CancelTaskException;
 import eu.stratosphere.nephele.execution.librarycache.LibraryCacheManager;
 import eu.stratosphere.runtime.io.api.MutableReader;
 import eu.stratosphere.runtime.io.api.MutableRecordReader;
@@ -177,10 +178,13 @@ public class DataSinkTask<IT> extends AbstractOutputTask
 			}
 		}
 		catch (Exception ex) {
+			if (ex instanceof CancelTaskException) {
+				throw ex;
+			}
 			// drop, if the task was canceled
-			if (!this.taskCanceled) {
+			else if (!this.taskCanceled) {
 				if (LOG.isErrorEnabled())
-					LOG.error(getLogString("Error in Pact user code: " + ex.getMessage()), ex);
+					LOG.error(getLogString("Error in user code: " + ex.getMessage()), ex);
 				throw ex;
 			}
 		}

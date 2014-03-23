@@ -86,13 +86,13 @@ public class RecordOutputCollector implements Collector<Record>
 
 	@Override
 	public void close() {
-		for (RecordWriter writer : writers) {
+		for (RecordWriter<?> writer : writers) {
 			try {
 				writer.flush();
 			} catch (IOException e) {
-				e.printStackTrace();
+				throw new RuntimeException(e.getMessage(), e);
 			} catch (InterruptedException e) {
-				e.printStackTrace();
+				throw new RuntimeException(e.getMessage(), e);
 			}
 		}
 	}

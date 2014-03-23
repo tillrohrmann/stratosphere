@@ -335,7 +335,7 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 			// Release all resources that may currently be allocated by the individual channels
 			releaseAllChannelResources();
 
-			if (this.executionObserver.isCanceled()) {
+			if (this.executionObserver.isCanceled() || t instanceof CancelTaskException) {
 				changeExecutionState(ExecutionState.CANCELED, null);
 			} else {
 				changeExecutionState(ExecutionState.FAILED, StringUtils.stringifyException(t));

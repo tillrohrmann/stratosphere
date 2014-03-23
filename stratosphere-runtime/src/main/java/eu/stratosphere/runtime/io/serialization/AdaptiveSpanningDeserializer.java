@@ -97,9 +97,9 @@ public class AdaptiveSpanningDeserializer<T extends IOReadableWritable> implemen
 			return (this.nonSpanningWrapper.remaining() == 0) ?
 				DeserializationResult.LAST_RECORD_FROM_BUFFER :
 				DeserializationResult.INTERMEDIATE_RECORD_FROM_BUFFER;
-		} else if (this.spanningWrapper.getNumGatheredBytes() == 0) {
-			// error case. we are in the spanning deserializer, but it has no bytes, yet
-			throw new IllegalStateException();
+//		} else if (this.spanningWrapper.getNumGatheredBytes() == 0) {
+//			// error case. we are in the spanning deserializer, but it has no bytes, yet
+//			throw new IllegalStateException();
 		} else {
 			return DeserializationResult.PARTIAL_RECORD;
 		}

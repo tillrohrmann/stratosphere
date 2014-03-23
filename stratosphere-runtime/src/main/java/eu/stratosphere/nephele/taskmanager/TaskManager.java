@@ -404,8 +404,7 @@ public class TaskManager implements TaskOperationProtocol {
 				LOG.debug("heartbeat");
 				this.jobManager.sendHeartbeat(this.localInstanceConnectionInfo, this.hardwareDescription);
 			} catch (IOException e) {
-				e.printStackTrace();
-				LOG.info("sending the heart beat caused an IO Exception");
+				LOG.info("sending the heart beat caused an IO Exception", e);
 			}
 
 			// Check the status of the task threads to detect unexpected thread terminations
@@ -529,25 +528,18 @@ public class TaskManager implements TaskOperationProtocol {
 
 		final Task task = this.runningTasks.get(id);
 
-		if (task == null) {
-			final TaskCancelResult taskCancelResult = new TaskCancelResult(id,
-				AbstractTaskResult.ReturnCode.TASK_NOT_FOUND);
-			taskCancelResult.setDescription("No task with ID " + id + " is currently running");
-			return taskCancelResult;
+		// if the task is null, it is already finished, cancelled, or killed. in all cases, we need not do anything
+		if (task != null) {
+			// Pass call to executor service so IPC thread can return immediately
+			final Runnable r = new Runnable() {
+				@Override
+				public void run() {
+					task.cancelExecution();
+				}
+			};
+
+			this.executorService.execute(r);
 		}
-
-		// Pass call to executor service so IPC thread can return immediately
-		final Runnable r = new Runnable() {
-
-			@Override
-			public void run() {
-
-				// Finally, request user code to cancel
-				task.cancelExecution();
-			}
-		};
-
-		this.executorService.execute(r);
 
 		return new TaskCancelResult(id, AbstractTaskResult.ReturnCode.SUCCESS);
 	}
@@ -556,27 +548,20 @@ public class TaskManager implements TaskOperationProtocol {
 	@Override
 	public TaskKillResult killTask(final ExecutionVertexID id) throws IOException {
 
+		
 		final Task task = this.runningTasks.get(id);
+		// if the task is null, it is already finished, cancelled, or killed. in all cases, we need not do anything
+		if (task != null) {
+			// Pass call to executor service so IPC thread can return immediately
+			final Runnable r = new Runnable() {
+				@Override
+				public void run() {
+					task.killExecution();
+				}
+			};
 
-		if (task == null) {
-			final TaskKillResult taskKillResult = new TaskKillResult(id,
-					AbstractTaskResult.ReturnCode.TASK_NOT_FOUND);
-			taskKillResult.setDescription("No task with ID + " + id + " is currently running");
-			return taskKillResult;
+			this.executorService.execute(r);
 		}
-
-		// Pass call to executor service so IPC thread can return immediately
-		final Runnable r = new Runnable() {
-
-			@Override
-			public void run() {
-
-				// Finally, request user code to cancel
-				task.killExecution();
-			}
-		};
-
-		this.executorService.execute(r);
 
 		return new TaskKillResult(id, AbstractTaskResult.ReturnCode.SUCCESS);
 	}

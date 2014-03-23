@@ -29,6 +29,7 @@ import eu.stratosphere.api.common.typeutils.TypeSerializerFactory;
 import eu.stratosphere.api.common.io.InputFormat;
 import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.core.io.InputSplit;
+import eu.stratosphere.nephele.execution.CancelTaskException;
 import eu.stratosphere.nephele.execution.librarycache.LibraryCacheManager;
 import eu.stratosphere.nephele.template.AbstractInputTask;
 import eu.stratosphere.pact.runtime.shipping.OutputCollector;
@@ -45,8 +46,8 @@ import eu.stratosphere.util.Collector;
  * 
  * @see eu.stratosphere.api.common.io.InputFormat
  */
-public class DataSourceTask<OT> extends AbstractInputTask<InputSplit>
-{
+public class DataSourceTask<OT> extends AbstractInputTask<InputSplit> {
+	
 	// Obtain DataSourceTask Logger
 	private static final Log LOG = LogFactory.getLog(DataSourceTask.class);
 
@@ -249,8 +250,13 @@ public class DataSourceTask<OT> extends AbstractInputTask<InputSplit>
 			
 			RegularPactTask.cancelChainedTasks(this.chainedTasks);
 			
-			// drop exception, if the task was canceled
-			if (!this.taskCanceled) {
+			
+			if (ex instanceof CancelTaskException) {
+				// forward canceling exception
+				throw ex;
+			}
+			else if (!this.taskCanceled) {
+				// drop exception, if the task was canceled
 				RegularPactTask.logAndThrowException(ex, this);
 			}
 		}

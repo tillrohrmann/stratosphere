@@ -24,6 +24,7 @@ import eu.stratosphere.api.common.typeutils.TypeSerializer;
 import eu.stratosphere.api.common.typeutils.TypeSerializerFactory;
 import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.core.io.IOReadableWritable;
+import eu.stratosphere.nephele.execution.CancelTaskException;
 import eu.stratosphere.nephele.execution.Environment;
 import eu.stratosphere.nephele.execution.librarycache.LibraryCacheManager;
 import eu.stratosphere.runtime.io.api.ChannelSelector;
@@ -533,8 +534,12 @@ public class RegularPactTask<S extends Function, OT> extends AbstractTask implem
 
 			RegularPactTask.cancelChainedTasks(this.chainedTasks);
 
-			// drop exception, if the task was canceled
-			if (this.running) {
+			if (ex instanceof CancelTaskException) {
+				// forward canceling exception
+				throw ex;
+			}
+			else if (this.running) {
+				// throw only if task was not cancelled. in the case of canceling, exceptions are expected 
 				RegularPactTask.logAndThrowException(ex, this);
 			}
 		}

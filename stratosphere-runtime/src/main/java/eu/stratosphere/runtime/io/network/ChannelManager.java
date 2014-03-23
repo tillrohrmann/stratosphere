@@ -305,15 +305,13 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 
 			Channel channel = this.channels.get(localReceiver);
 			if (channel == null) {
-				try {
-					throw new IOException("Could not find receiver " + localReceiver);
-				} finally {
-					releaseEnvelope(envelope);
-				}
+				releaseEnvelope(envelope);
+				throw new LocalReceiverCancelledException(localReceiver);
 			}
 
 			if (!channel.isInputChannel()) {
-				LOG.error("Local receiver " + localReceiver + " is not an input channel, but is supposed to accept a buffer");
+				releaseEnvelope(envelope);
+				throw new IOException("Local receiver " + localReceiver + " is not an input channel.");
 			}
 
 			channel.queueEnvelope(envelope);
@@ -330,12 +328,11 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 					Channel channel = this.channels.get(receiver);
 
 					if (channel == null) {
-						throw new IOException("Could not find receiver " + receiver);
+						throw new LocalReceiverCancelledException(receiver);
 					}
 
 					if (!channel.isInputChannel()) {
-						LOG.error("Local receiver " + receiver + " is not an input channel, but is supposed to accept a buffer");
-						continue;
+						throw new IOException("Local receiver " + receiver + " is not an input channel.");
 					}
 
 					final InputChannel<?> inputChannel = (InputChannel<?>) channel;
@@ -386,7 +383,7 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 			Channel receiver = this.channels.get(receiverId);
 
 			if (receiver == null) {
-				throw new IOException("Could not find receiver " + receiverId);
+				throw new LocalReceiverCancelledException(receiverId);
 			}
 
 			receiver.queueEnvelope(envelope);
