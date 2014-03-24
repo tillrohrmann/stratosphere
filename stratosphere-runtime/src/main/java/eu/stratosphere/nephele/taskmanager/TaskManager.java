@@ -544,29 +544,6 @@ public class TaskManager implements TaskOperationProtocol {
 		return new TaskCancelResult(id, AbstractTaskResult.ReturnCode.SUCCESS);
 	}
 
-
-	@Override
-	public TaskKillResult killTask(final ExecutionVertexID id) throws IOException {
-
-		
-		final Task task = this.runningTasks.get(id);
-		// if the task is null, it is already finished, cancelled, or killed. in all cases, we need not do anything
-		if (task != null) {
-			// Pass call to executor service so IPC thread can return immediately
-			final Runnable r = new Runnable() {
-				@Override
-				public void run() {
-					task.killExecution();
-				}
-			};
-
-			this.executorService.execute(r);
-		}
-
-		return new TaskKillResult(id, AbstractTaskResult.ReturnCode.SUCCESS);
-	}
-
-
 	@Override
 	public List<TaskSubmissionResult> submitTasks(final List<TaskDeploymentDescriptor> tasks) throws IOException {
 

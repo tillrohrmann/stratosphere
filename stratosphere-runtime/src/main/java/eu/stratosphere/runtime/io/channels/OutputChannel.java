@@ -30,6 +30,8 @@ public class OutputChannel extends Channel {
 
 	private static final Log LOG = LogFactory.getLog(OutputChannel.class);
 
+	private final Object closeLock = new Object();
+	
 	private final OutputGate outputGate;
 
 	private boolean senderCloseRequested;
@@ -96,7 +98,10 @@ public class OutputChannel extends Channel {
 
 		for (AbstractEvent event : envelope.deserializeEvents()) {
 			if (event.getClass() == ChannelCloseEvent.class) {
-				this.receiverCloseRequested = true;
+				synchronized (this.closeLock) {
+					this.receiverCloseRequested = true;
+					this.closeLock.notifyAll();
+				}
 				LOG.debug("OutputChannel received close event from target.");
 			} 
 			else if (event instanceof AbstractTaskEvent) {
@@ -129,8 +134,16 @@ public class OutputChannel extends Channel {
 	}
 
 	@Override
-	public boolean isClosed() throws IOException, InterruptedException {
+	public boolean isClosed() {
 		return this.senderCloseRequested && this.receiverCloseRequested;
+	}
+	
+	public void waitForChannelToBeClosed() throws InterruptedException {
+		synchronized (this.closeLock) {
+			while (!this.receiverCloseRequested) {
+				this.closeLock.wait(1000);
+			}
+		}
 	}
 
 	// -----------------------------------------------------------------------------------------------------------------

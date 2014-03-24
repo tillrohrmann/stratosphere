@@ -475,28 +475,14 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 	 * @throws InterruptedException
 	 *         thrown if the thread waiting for the channels to be closed is interrupted
 	 */
-	private void waitForOutputChannelsToBeClosed() throws IOException, InterruptedException {
-		// Wait for disconnection of all output gates
-		while (true) {
+	private void waitForOutputChannelsToBeClosed() throws InterruptedException {
+		// Make sure, we leave this method with an InterruptedException when the task has been canceled
+		if (this.executionObserver.isCanceled()) {
+			return;
+		}
 
-			// Make sure, we leave this method with an InterruptedException when the task has been canceled
-			if (this.executionObserver.isCanceled()) {
-				throw new InterruptedException();
-			}
-
-			boolean allClosed = true;
-			for (int i = 0; i < getNumberOfOutputGates(); i++) {
-				final OutputGate og = this.outputGates.get(i);
-				if (!og.isClosed()) {
-					allClosed = false;
-				}
-			}
-
-			if (allClosed) {
-				break;
-			} else {
-				Thread.sleep(SLEEPINTERVAL);
-			}
+		for (OutputGate og : this.outputGates) {
+			og.waitForGateToBeClosed();
 		}
 	}
 

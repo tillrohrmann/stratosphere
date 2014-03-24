@@ -29,6 +29,8 @@ public class OutputGate extends Gate<IOReadableWritable> {
 
 	private OutputChannel[] channels;
 
+	private boolean closed;
+	
 	/**
 	 * Constructs a new output gate.
 	 *
@@ -108,14 +110,31 @@ public class OutputGate extends Gate<IOReadableWritable> {
 	}
 
 	@Override
-	public boolean isClosed() throws IOException, InterruptedException {
+	public boolean isClosed() {
+		if (this.closed) {
+			return true;
+		}
+		
 		for (OutputChannel channel : this.channels) {
 			if (!channel.isClosed()) {
 				return false;
 			}
 		}
-
+		
+		this.closed = true;
 		return true;
+	}
+	
+	public void waitForGateToBeClosed() throws InterruptedException {
+		if (this.closed) {
+			return;
+		}
+		
+		for (OutputChannel channel : this.channels) {
+			channel.waitForChannelToBeClosed();
+		}
+		
+		this.closed = true;
 	}
 
 	// -----------------------------------------------------------------------------------------------------------------

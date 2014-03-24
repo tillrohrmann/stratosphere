@@ -25,7 +25,6 @@ import eu.stratosphere.nephele.jobgraph.JobID;
 import eu.stratosphere.nephele.profiling.TaskManagerProfiler;
 import eu.stratosphere.nephele.services.memorymanager.MemoryManager;
 import eu.stratosphere.nephele.template.AbstractInvokable;
-import eu.stratosphere.util.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -131,15 +130,50 @@ public final class Task implements ExecutionObserver {
 	 * Cancels the execution of the task (i.e. interrupts the execution thread).
 	 */
 	public void cancelExecution() {
-		cancelOrKillExecution(true);
+		final Thread executingThread = this.environment.getExecutingThread();
+
+		if (executingThread == null) {
+			return;
+		}
+
+		LOG.info("Canceling " + this.environment.getTaskNameWithIndex());
+
+		this.isCanceled = true;
+		// Change state
+		executionStateChanged(ExecutionState.CANCELING, null);
+
+		// Request user code to shut down
+		try {
+			final AbstractInvokable invokable = this.environment.getInvokable();
+			if (invokable != null) {
+				invokable.cancel();
+			}
+		} catch (Throwable e) {
+			LOG.error("Error while canceling task", e);
+		}
+
+		// Continuously interrupt the user thread until it changed to state CANCELED
+		while (true) {
+			executingThread.interrupt();
+
+			if (!executingThread.isAlive()) {
+				break;
+			}
+
+			try {
+				executingThread.join(1000);
+			} catch (InterruptedException e) {}
+
+			if (!executingThread.isAlive()) {
+				break;
+			}
+
+			if (LOG.isDebugEnabled())
+				LOG.debug("Sending repeated canceling  signal to " +
+						this.environment.getTaskName() + " with state " + this.executionState);
+		}
 	}
 
-	/**
-	 * Kills the task (i.e. interrupts the execution thread).
-	 */
-	public void killExecution() {
-		cancelOrKillExecution(false);
-	}
 
 	/**
 	 * Registers the task manager profiler with the task.
@@ -184,66 +218,6 @@ public final class Task implements ExecutionObserver {
 	 */
 	public ExecutionState getExecutionState() {
 		return this.executionState;
-	}
-
-
-	/**
-	 * Cancels or kills the task.
-	 *
-	 * @param cancel
-	 *        <code>true/code> if the task shall be canceled, <code>false</code> if it shall be killed
-	 */
-	private void cancelOrKillExecution(final boolean cancel) {
-
-		final Thread executingThread = this.environment.getExecutingThread();
-
-		if (executingThread == null) {
-			return;
-		}
-
-		if (this.executionState != ExecutionState.RUNNING && this.executionState != ExecutionState.FINISHING) {
-			return;
-		}
-
-		LOG.info((cancel ? "Canceling " : "Killing ") + this.environment.getTaskNameWithIndex());
-
-		if (cancel) {
-			this.isCanceled = true;
-			// Change state
-			executionStateChanged(ExecutionState.CANCELING, null);
-
-			// Request user code to shut down
-			try {
-				final AbstractInvokable invokable = this.environment.getInvokable();
-				if (invokable != null) {
-					invokable.cancel();
-				}
-			} catch (Throwable e) {
-				LOG.error(StringUtils.stringifyException(e));
-			}
-		}
-
-		// Continuously interrupt the user thread until it changed to state CANCELED
-		while (true) {
-
-			executingThread.interrupt();
-
-			if (!executingThread.isAlive()) {
-				break;
-			}
-
-			try {
-				executingThread.join(1000);
-			} catch (InterruptedException e) {}
-
-			if (!executingThread.isAlive()) {
-				break;
-			}
-
-			if (LOG.isDebugEnabled())
-				LOG.debug("Sending repeated " + (cancel == true ? "canceling" : "killing") + " signal to " +
-						this.environment.getTaskName() + " with state " + this.executionState);
-		}
 	}
 
 	// -----------------------------------------------------------------------------------------------------------------
