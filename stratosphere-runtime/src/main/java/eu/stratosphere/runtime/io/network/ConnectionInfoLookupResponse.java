@@ -19,12 +19,9 @@ package eu.stratosphere.runtime.io.network;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
-import java.util.List;
 
 import eu.stratosphere.core.io.IOReadableWritable;
 import eu.stratosphere.runtime.io.channels.ChannelID;
-import eu.stratosphere.nephele.util.EnumUtils;
-import eu.stratosphere.nephele.util.SerializableArrayList;
 
 public class ConnectionInfoLookupResponse implements IOReadableWritable {
 
@@ -34,143 +31,113 @@ public class ConnectionInfoLookupResponse implements IOReadableWritable {
 
 	// was request successful?
 	private ReturnCode returnCode;
+	
+	private RemoteReceiver remoteTarget;
 
-	/**
-	 * Contains next-hop instances, this instance must forward multicast transmissions to.
-	 */
-	private final SerializableArrayList<RemoteReceiver> remoteTargets = new SerializableArrayList<RemoteReceiver>();
+	private ChannelID localTarget;
+	
+	
+	public ConnectionInfoLookupResponse() {}
 
-	/**
-	 * Contains local ChannelIDs, multicast packets must be forwarded to.
-	 */
-	private final SerializableArrayList<ChannelID> localTargets = new SerializableArrayList<ChannelID>();
-
-	public ConnectionInfoLookupResponse() {
-		this.returnCode = ReturnCode.NOT_FOUND;
-	}
-
-	public void addRemoteTarget(final RemoteReceiver remote) {
-		this.remoteTargets.add(remote);
-	}
-
-	public void addLocalTarget(ChannelID local) {
-		this.localTargets.add(local);
-	}
-
-	private void setReturnCode(ReturnCode code) {
+	public ConnectionInfoLookupResponse(ReturnCode code) {
 		this.returnCode = code;
+		this.remoteTarget = null;
+		this.localTarget = null;
+	}
+	
+	public ConnectionInfoLookupResponse(ReturnCode code, ChannelID localTarget) {
+		this.returnCode = code;
+		this.remoteTarget = null;
+		this.localTarget = localTarget;
+	}
+	
+	public ConnectionInfoLookupResponse(ReturnCode code, RemoteReceiver receiver) {
+		this.returnCode = code;
+		this.remoteTarget = receiver;
+		this.localTarget = null;
 	}
 
-	public List<RemoteReceiver> getRemoteTargets() {
-		return this.remoteTargets;
+	public RemoteReceiver getRemoteTarget() {
+		return this.remoteTarget;
 	}
 
-	public List<ChannelID> getLocalTargets() {
-		return this.localTargets;
+	public ChannelID getLocalTarget() {
+		return this.localTarget;
 	}
 
 	@Override
 	public void read(DataInput in) throws IOException {
-
-		this.localTargets.read(in);
-		this.remoteTargets.read(in);
-
-		this.returnCode = EnumUtils.readEnum(in, ReturnCode.class);
+		this.returnCode = ReturnCode.values()[in.readInt()];
+		
+		if (in.readBoolean()) {
+			this.remoteTarget = new RemoteReceiver();
+			this.remoteTarget.read(in);
+		}
+		if (in.readBoolean()) {
+			this.localTarget = new ChannelID();
+			this.localTarget.read(in);
+		}
 	}
 
 	@Override
 	public void write(DataOutput out) throws IOException {
+		out.writeInt(this.returnCode.ordinal());
+		
+		if (this.remoteTarget != null) {
+			out.writeBoolean(true);
+			this.remoteTarget.write(out);
+		} else {
+			out.writeBoolean(false);
+		}
 
-		this.localTargets.write(out);
-		this.remoteTargets.write(out);
-
-		EnumUtils.writeEnum(out, this.returnCode);
-
+		if (this.localTarget != null) {
+			out.writeBoolean(true);
+			this.localTarget.write(out);
+		} else {
+			out.writeBoolean(false);
+		}
 	}
 
 	public boolean receiverNotFound() {
-
 		return (this.returnCode == ReturnCode.NOT_FOUND);
 	}
 
 	public boolean receiverNotReady() {
-
 		return (this.returnCode == ReturnCode.FOUND_BUT_RECEIVER_NOT_READY);
 	}
 
 	public boolean receiverReady() {
-
 		return (this.returnCode == ReturnCode.FOUND_AND_RECEIVER_READY);
 	}
 
 	public boolean isJobAborting() {
-
 		return (this.returnCode == ReturnCode.JOB_IS_ABORTING);
 	}
 
-	public static ConnectionInfoLookupResponse createReceiverFoundAndReady(final ChannelID targetChannelID) {
-
-		final ConnectionInfoLookupResponse response = new ConnectionInfoLookupResponse();
-		response.setReturnCode(ReturnCode.FOUND_AND_RECEIVER_READY);
-		response.addLocalTarget(targetChannelID);
-
-		return response;
+	
+	public static ConnectionInfoLookupResponse createReceiverFoundAndReady(ChannelID targetChannelID) {
+		return new ConnectionInfoLookupResponse(ReturnCode.FOUND_AND_RECEIVER_READY, targetChannelID);
 	}
 
-	public static ConnectionInfoLookupResponse createReceiverFoundAndReady(final RemoteReceiver remoteReceiver) {
-
-		final ConnectionInfoLookupResponse response = new ConnectionInfoLookupResponse();
-		response.setReturnCode(ReturnCode.FOUND_AND_RECEIVER_READY);
-		response.addRemoteTarget(remoteReceiver);
-
-		return response;
-	}
-
-	/**
-	 * Constructor used to generate a plain ConnectionInfoLookupResponse object to be filled with multicast targets.
-	 * 
-	 * @return
-	 */
-	public static ConnectionInfoLookupResponse createReceiverFoundAndReady() {
-
-		final ConnectionInfoLookupResponse response = new ConnectionInfoLookupResponse();
-		response.setReturnCode(ReturnCode.FOUND_AND_RECEIVER_READY);
-
-		return response;
+	public static ConnectionInfoLookupResponse createReceiverFoundAndReady(RemoteReceiver remoteReceiver) {
+		return new ConnectionInfoLookupResponse(ReturnCode.FOUND_AND_RECEIVER_READY, remoteReceiver);
 	}
 
 	public static ConnectionInfoLookupResponse createReceiverNotFound() {
-		final ConnectionInfoLookupResponse response = new ConnectionInfoLookupResponse();
-		response.setReturnCode(ReturnCode.NOT_FOUND);
-
-		return response;
+		return new ConnectionInfoLookupResponse(ReturnCode.NOT_FOUND);
 	}
 
 	public static ConnectionInfoLookupResponse createReceiverNotReady() {
-		final ConnectionInfoLookupResponse response = new ConnectionInfoLookupResponse();
-		response.setReturnCode(ReturnCode.FOUND_BUT_RECEIVER_NOT_READY);
-
-		return response;
+		return new ConnectionInfoLookupResponse(ReturnCode.FOUND_BUT_RECEIVER_NOT_READY);
 	}
 
 	public static ConnectionInfoLookupResponse createJobIsAborting() {
-		final ConnectionInfoLookupResponse response = new ConnectionInfoLookupResponse();
-		response.setReturnCode(ReturnCode.JOB_IS_ABORTING);
-
-		return response;
+		return new ConnectionInfoLookupResponse(ReturnCode.JOB_IS_ABORTING);
 	}
 
+	
 	@Override
 	public String toString() {
-		StringBuilder returnstring = new StringBuilder();
-		returnstring.append("local targets (total: " + this.localTargets.size() + "):\n");
-		for (ChannelID i : this.localTargets) {
-			returnstring.append(i + "\n");
-		}
-		returnstring.append("remote targets: (total: " + this.remoteTargets.size() + "):\n");
-		for (final RemoteReceiver rr : this.remoteTargets) {
-			returnstring.append(rr + "\n");
-		}
-		return returnstring.toString();
+		return this.returnCode.name() + ", local target: " + this.localTarget + ", remoteTarget: " + this.remoteTarget;
 	}
 }

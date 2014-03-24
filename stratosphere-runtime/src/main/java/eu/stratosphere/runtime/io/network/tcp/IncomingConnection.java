@@ -59,7 +59,7 @@ public class IncomingConnection {
 		switch (deserializationState) {
 			case COMPLETE:
 				Envelope envelope = this.reader.getFullyDeserializedTransferEnvelope();
-				this.channelManager.dispatchFromNetwork(envelope, false);
+				this.channelManager.dispatchFromNetwork(envelope);
 				this.reader.reset();
 				break;
 

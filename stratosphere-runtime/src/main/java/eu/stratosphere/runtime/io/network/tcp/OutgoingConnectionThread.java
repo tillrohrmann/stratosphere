@@ -55,126 +55,132 @@ public class OutgoingConnectionThread extends Thread {
 
 	@Override
 	public void run() {
-
-		while (!isInterrupted()) {
-
-			synchronized (this.pendingConnectionRequests) {
-
-				if (!this.pendingConnectionRequests.isEmpty()) {
-
-					final OutgoingConnection outgoingConnection = this.pendingConnectionRequests.poll();
-					try {
-						final SocketChannel socketChannel = SocketChannel.open();
-						socketChannel.configureBlocking(false);
-						final SelectionKey key = socketChannel.register(this.selector, SelectionKey.OP_CONNECT);
-						socketChannel.connect(outgoingConnection.getConnectionAddress());
-						key.attach(outgoingConnection);
-					} catch (final IOException ioe) {
-						// IOException is reported by separate thread to avoid deadlocks
-						final Runnable reporterThread = new Runnable() {
-
-							@Override
-							public void run() {
-								outgoingConnection.reportConnectionProblem(ioe);
-							}
-						};
-						new Thread(reporterThread).start();
+		try {
+			while (!isInterrupted()) {
+	
+				synchronized (this.pendingConnectionRequests) {
+	
+					if (!this.pendingConnectionRequests.isEmpty()) {
+	
+						final OutgoingConnection outgoingConnection = this.pendingConnectionRequests.poll();
+						try {
+							final SocketChannel socketChannel = SocketChannel.open();
+							socketChannel.configureBlocking(false);
+							final SelectionKey key = socketChannel.register(this.selector, SelectionKey.OP_CONNECT);
+							socketChannel.connect(outgoingConnection.getConnectionAddress());
+							key.attach(outgoingConnection);
+						} catch (final IOException ioe) {
+							// IOException is reported by separate thread to avoid deadlocks
+							final Runnable reporterThread = new Runnable() {
+	
+								@Override
+								public void run() {
+									outgoingConnection.reportConnectionProblem(ioe);
+								}
+							};
+							new Thread(reporterThread).start();
+						}
 					}
 				}
-			}
-
-			synchronized (this.pendingWriteEventSubscribeRequests) {
-
-				if (!this.pendingWriteEventSubscribeRequests.isEmpty()) {
-					final SelectionKey oldSelectionKey = this.pendingWriteEventSubscribeRequests.poll();
-					final OutgoingConnection outgoingConnection = (OutgoingConnection) oldSelectionKey.attachment();
-					final SocketChannel socketChannel = (SocketChannel) oldSelectionKey.channel();
-
-					try {
-						final SelectionKey newSelectionKey = socketChannel.register(this.selector, SelectionKey.OP_READ
-							| SelectionKey.OP_WRITE);
-						newSelectionKey.attach(outgoingConnection);
-						outgoingConnection.setSelectionKey(newSelectionKey);
-					} catch (final IOException ioe) {
-						// IOException is reported by separate thread to avoid deadlocks
-						final Runnable reporterThread = new Runnable() {
-
-							@Override
-							public void run() {
-								outgoingConnection.reportTransmissionProblem(ioe);
-							}
-						};
-						new Thread(reporterThread).start();
-					}
-				}
-			}
-
-			synchronized (this.connectionsToClose) {
-
-				final Iterator<Map.Entry<OutgoingConnection, Long>> closeIt = this.connectionsToClose.entrySet()
-					.iterator();
-				final long now = System.currentTimeMillis();
-				while (closeIt.hasNext()) {
-
-					final Map.Entry<OutgoingConnection, Long> entry = closeIt.next();
-					if ((entry.getValue().longValue() + MIN_IDLE_TIME_BEFORE_CLOSE) < now) {
-						final OutgoingConnection outgoingConnection = entry.getKey();
-						closeIt.remove();
-						// Create new thread to close connection to avoid deadlocks
-						final Runnable closeThread = new Runnable() {
-
-							@Override
-							public void run() {
-								try {
-									outgoingConnection.closeConnection();
-								} catch (IOException ioe) {
+	
+				synchronized (this.pendingWriteEventSubscribeRequests) {
+	
+					if (!this.pendingWriteEventSubscribeRequests.isEmpty()) {
+						final SelectionKey oldSelectionKey = this.pendingWriteEventSubscribeRequests.poll();
+						final OutgoingConnection outgoingConnection = (OutgoingConnection) oldSelectionKey.attachment();
+						final SocketChannel socketChannel = (SocketChannel) oldSelectionKey.channel();
+	
+						try {
+							final SelectionKey newSelectionKey = socketChannel.register(this.selector, SelectionKey.OP_READ
+								| SelectionKey.OP_WRITE);
+							newSelectionKey.attach(outgoingConnection);
+							outgoingConnection.setSelectionKey(newSelectionKey);
+						} catch (final IOException ioe) {
+							// IOException is reported by separate thread to avoid deadlocks
+							final Runnable reporterThread = new Runnable() {
+	
+								@Override
+								public void run() {
 									outgoingConnection.reportTransmissionProblem(ioe);
 								}
+							};
+							new Thread(reporterThread).start();
+						}
+					}
+				}
+	
+				synchronized (this.connectionsToClose) {
+	
+					final Iterator<Map.Entry<OutgoingConnection, Long>> closeIt = this.connectionsToClose.entrySet()
+						.iterator();
+					final long now = System.currentTimeMillis();
+					while (closeIt.hasNext()) {
+	
+						final Map.Entry<OutgoingConnection, Long> entry = closeIt.next();
+						if ((entry.getValue().longValue() + MIN_IDLE_TIME_BEFORE_CLOSE) < now) {
+							final OutgoingConnection outgoingConnection = entry.getKey();
+							closeIt.remove();
+							// Create new thread to close connection to avoid deadlocks
+							final Runnable closeThread = new Runnable() {
+	
+								@Override
+								public void run() {
+									try {
+										outgoingConnection.closeConnection();
+									} catch (IOException ioe) {
+										outgoingConnection.reportTransmissionProblem(ioe);
+									}
+								}
+							};
+	
+							new Thread(closeThread).start();
+						}
+	
+					}
+				}
+	
+				try {
+					this.selector.select(10);
+				} catch (IOException e) {
+					LOG.error(e);
+				}
+	
+				final Iterator<SelectionKey> iter = this.selector.selectedKeys().iterator();
+	
+				while (iter.hasNext()) {
+					final SelectionKey key = iter.next();
+	
+					iter.remove();
+					if (key.isValid()) {
+						if (key.isConnectable()) {
+							doConnect(key);
+						} else {
+							if (key.isReadable()) {
+								doRead(key);
+								// A read will always result in an exception, so the write key will not be valid anymore
+								continue;
 							}
-						};
-
-						new Thread(closeThread).start();
-					}
-
-				}
-			}
-
-			try {
-				this.selector.select(10);
-			} catch (IOException e) {
-				LOG.error(e);
-			}
-
-			final Iterator<SelectionKey> iter = this.selector.selectedKeys().iterator();
-
-			while (iter.hasNext()) {
-				final SelectionKey key = iter.next();
-
-				iter.remove();
-				if (key.isValid()) {
-					if (key.isConnectable()) {
-						doConnect(key);
+							if (key.isWritable()) {
+								doWrite(key);
+							}
+						}
 					} else {
-						if (key.isReadable()) {
-							doRead(key);
-							// A read will always result in an exception, so the write key will not be valid anymore
-							continue;
-						}
-						if (key.isWritable()) {
-							doWrite(key);
-						}
+						LOG.error("Received invalid key: " + key);
 					}
-				} else {
-					LOG.error("Received invalid key: " + key);
 				}
+			}
+	
+			// Finally, try to close the selector
+			try {
+				this.selector.close();
+			} catch (IOException ioe) {
+				LOG.debug(StringUtils.stringifyException(ioe));
 			}
 		}
-
-		// Finally, try to close the selector
-		try {
-			this.selector.close();
-		} catch (IOException ioe) {
-			LOG.debug(StringUtils.stringifyException(ioe));
+		catch (Throwable t) {
+			// this is a disaster, this task manager cannot go on!
+			LOG.fatal("Outgoing connection thread died with an exception: " + t.getMessage(), t);
+			System.exit(1);
 		}
 	}
 

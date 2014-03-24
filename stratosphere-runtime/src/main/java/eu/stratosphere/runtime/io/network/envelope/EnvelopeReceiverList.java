@@ -14,9 +14,6 @@
 package eu.stratosphere.runtime.io.network.envelope;
 
 import java.net.InetAddress;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 
 import eu.stratosphere.runtime.io.channels.ChannelID;
 import eu.stratosphere.runtime.io.network.ConnectionInfoLookupResponse;
@@ -32,56 +29,47 @@ import eu.stratosphere.runtime.io.network.RemoteReceiver;
  */
 public class EnvelopeReceiverList {
 
-	private final List<ChannelID> localReceivers;
+	private final ChannelID localReceiver;
 
-	private final List<RemoteReceiver> remoteReceivers;
+	private final RemoteReceiver remoteReceiver;
 
-	public EnvelopeReceiverList(final ConnectionInfoLookupResponse cilr) {
-
-		this.localReceivers = Collections.unmodifiableList(cilr.getLocalTargets());
-		this.remoteReceivers = Collections.unmodifiableList(cilr.getRemoteTargets());
+	public EnvelopeReceiverList(ConnectionInfoLookupResponse cilr) {
+		this.localReceiver = cilr.getLocalTarget();
+		this.remoteReceiver = cilr.getRemoteTarget();
 	}
 
-	public EnvelopeReceiverList(final ChannelID localReceiver) {
-
-		final List<ChannelID> lr = new ArrayList<ChannelID>(1);
-		lr.add(localReceiver);
-
-		this.localReceivers = Collections.unmodifiableList(lr);
-		this.remoteReceivers = Collections.emptyList();
+	public EnvelopeReceiverList(ChannelID localReceiver) {
+		this.localReceiver = localReceiver;
+		this.remoteReceiver = null;
 	}
 
-	public EnvelopeReceiverList(final RemoteReceiver remoteReceiver) {
-
-		final List<RemoteReceiver> rr = new ArrayList<RemoteReceiver>(1);
-		rr.add(remoteReceiver);
-
-		this.localReceivers = Collections.emptyList();
-		this.remoteReceivers = Collections.unmodifiableList(rr);
+	public EnvelopeReceiverList(RemoteReceiver remoteReceiver) {
+		this.localReceiver = null;
+		this.remoteReceiver = remoteReceiver;
 	}
 
-	public boolean hasLocalReceivers() {
-
-		return (!this.localReceivers.isEmpty());
+	public boolean hasLocalReceiver() {
+		return this.localReceiver != null;
 	}
 
-	public boolean hasRemoteReceivers() {
-
-		return (!this.remoteReceivers.isEmpty());
+	public boolean hasRemoteReceiver() {
+		return this.remoteReceiver != null;
 	}
 
 	public int getTotalNumberOfReceivers() {
-
-		return (this.localReceivers.size() + this.remoteReceivers.size());
+		return (this.localReceiver == null ? 0 : 1) + (this.remoteReceiver == null ? 0 : 1);
 	}
 
-	public List<RemoteReceiver> getRemoteReceivers() {
-
-		return this.remoteReceivers;
+	public RemoteReceiver getRemoteReceiver() {
+		return this.remoteReceiver;
 	}
 
-	public List<ChannelID> getLocalReceivers() {
-
-		return this.localReceivers;
+	public ChannelID getLocalReceiver() {
+		return this.localReceiver;
+	}
+	
+	@Override
+	public String toString() {
+		return "local receiver: " + this.localReceiver + ", remote receiver: " + this.remoteReceiver;
 	}
 }

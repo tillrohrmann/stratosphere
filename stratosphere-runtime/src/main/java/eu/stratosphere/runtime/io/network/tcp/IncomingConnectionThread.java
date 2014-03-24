@@ -86,65 +86,71 @@ public class IncomingConnectionThread extends Thread {
 
 	@Override
 	public void run() {
-
-		while (!this.isInterrupted()) {
-
-			synchronized (this.pendingReadEventSubscribeRequests) {
-				while (!this.pendingReadEventSubscribeRequests.isEmpty()) {
-					final SelectionKey key = this.pendingReadEventSubscribeRequests.poll();
-					final IncomingConnection incomingConnection = (IncomingConnection) key.attachment();
-					final SocketChannel socketChannel = (SocketChannel) key.channel();
-
-					try {
-						final SelectionKey newKey = socketChannel.register(this.selector, SelectionKey.OP_READ);
-						newKey.attach(incomingConnection);
-					} catch (ClosedChannelException e) {
-						incomingConnection.reportTransmissionProblem(key, e);
-					}
-				}
-			}
-
-			try {
-				this.selector.select(500);
-			} catch (IOException e) {
-				LOG.error(e);
-			}
-
-			final Iterator<SelectionKey> iter = this.selector.selectedKeys().iterator();
-
-			while (iter.hasNext()) {
-				final SelectionKey key = iter.next();
-
-				iter.remove();
-				if (key.isValid()) {
-					if (key.isReadable()) {
-						doRead(key);
-					} else if (key.isAcceptable()) {
-						doAccept(key);
-					} else {
-						LOG.error("Unknown key: " + key);
-					}
-				} else {
-					LOG.error("Received invalid key: " + key);
-				}
-			}
-		}
-
-		// Do cleanup, if necessary
-		if (this.listeningSocket != null) {
-			try {
-				this.listeningSocket.close();
-			} catch (IOException ioe) {
-				// Actually, we can ignore this exception
-				LOG.debug(ioe);
-			}
-		}
-
-		// Finally, close the selector
 		try {
-			this.selector.close();
-		} catch (IOException ioe) {
-			LOG.debug(StringUtils.stringifyException(ioe));
+			while (!this.isInterrupted()) {
+	
+				synchronized (this.pendingReadEventSubscribeRequests) {
+					while (!this.pendingReadEventSubscribeRequests.isEmpty()) {
+						final SelectionKey key = this.pendingReadEventSubscribeRequests.poll();
+						final IncomingConnection incomingConnection = (IncomingConnection) key.attachment();
+						final SocketChannel socketChannel = (SocketChannel) key.channel();
+	
+						try {
+							final SelectionKey newKey = socketChannel.register(this.selector, SelectionKey.OP_READ);
+							newKey.attach(incomingConnection);
+						} catch (ClosedChannelException e) {
+							incomingConnection.reportTransmissionProblem(key, e);
+						}
+					}
+				}
+	
+				try {
+					this.selector.select(500);
+				} catch (IOException e) {
+					LOG.error(e);
+				}
+	
+				final Iterator<SelectionKey> iter = this.selector.selectedKeys().iterator();
+	
+				while (iter.hasNext()) {
+					final SelectionKey key = iter.next();
+	
+					iter.remove();
+					if (key.isValid()) {
+						if (key.isReadable()) {
+							doRead(key);
+						} else if (key.isAcceptable()) {
+							doAccept(key);
+						} else {
+							LOG.error("Unknown key: " + key);
+						}
+					} else {
+						LOG.error("Received invalid key: " + key);
+					}
+				}
+			}
+	
+			// Do cleanup, if necessary
+			if (this.listeningSocket != null) {
+				try {
+					this.listeningSocket.close();
+				} catch (IOException ioe) {
+					// Actually, we can ignore this exception
+					LOG.debug(ioe);
+				}
+			}
+	
+			// Finally, close the selector
+			try {
+				this.selector.close();
+			} catch (IOException ioe) {
+				LOG.debug(StringUtils.stringifyException(ioe));
+			}
+		}
+		catch (Throwable t) {
+			// this is a disaster, this task manager cannot go on!
+			LOG.fatal("Incoming connection thread died with an exception: " + t.getMessage(), t);
+			System.exit(1);
 		}
 	}
 
