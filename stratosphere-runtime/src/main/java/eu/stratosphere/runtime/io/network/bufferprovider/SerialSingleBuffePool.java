@@ -43,7 +43,7 @@ public final class SerialSingleBuffePool implements BufferProvider, BufferRecycl
 			return this.buffer.duplicate();
 		}
 		else {
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("Requesting buffer with size " + minBufferSize + ". Pool's buffer size is " + this.bufferSize);
 		}
 	}
 
@@ -53,7 +53,7 @@ public final class SerialSingleBuffePool implements BufferProvider, BufferRecycl
 			return this.buffer.duplicate();
 		}
 		else {
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("Requesting buffer with size " + minBufferSize + ". Pool's buffer size is " + this.bufferSize);
 		}
 	}
 
