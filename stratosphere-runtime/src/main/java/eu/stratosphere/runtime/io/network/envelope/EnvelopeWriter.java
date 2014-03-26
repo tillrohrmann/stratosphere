@@ -23,22 +23,25 @@ import java.nio.channels.WritableByteChannel;
 
 public class EnvelopeWriter {
 
+	protected static final int MAGIC_NUMBER = 0xBADC0FFE;
+
 	/**
-	 * Size of the envelope header: 41 bytes = 4 bytes sequence number, 16 bytes job id,
-	 * 16 bytes sender id, 4 bytes bufferSize, 4 bytes event list length.
+	 * Size of the envelope header: 48 bytes = 4 bytes magic number, 4 bytes sequence number, 16 bytes job id,
+	 * 16 bytes sender id, 4 bytes bufferSize, 4 bytes event list length
 	 */
-	public static final int HEADER_SIZE = 4 + 2 * AbstractID.SIZE + 4 + 4;
+	public static final int HEADER_SIZE = 4 + 4 + 2 * AbstractID.SIZE + 4 + 4;
 
-	public static final int SEQUENCE_NUMBER_OFFSET = 0;
+	public static final int MAGIC_NUMBER_OFFSET = 0;
 
-	public static final int JOB_ID_OFFSET = 4;
+	public static final int SEQUENCE_NUMBER_OFFSET = 4;
 
-	public static final int CHANNEL_ID_OFFSET = 20;
+	public static final int JOB_ID_OFFSET = 8;
 
-	public static final int BUFFER_SIZE_OFFSET = 36;
+	public static final int CHANNEL_ID_OFFSET = 24;
 
-	public static final int EVENTS_SIZE_OFFSET = 40;
+	public static final int BUFFER_SIZE_OFFSET = 40;
 
+	public static final int EVENTS_SIZE_OFFSET = 44;
 
 	private ByteBuffer currentHeader;
 
@@ -111,11 +114,11 @@ public class EnvelopeWriter {
 		}
 	}
 
-
 	private void constructHeader(Envelope env) {
 		final ByteBuffer buf = this.headerBuffer;
 
 		buf.clear();							// reset
+		buf.putInt(MAGIC_NUMBER);
 		buf.putInt(env.getSequenceNumber());	// sequence number (4 bytes)
 		env.getJobID().write(buf);				// job Id (16 bytes)
 		env.getSource().write(buf);				// producerId (16 bytes)
@@ -128,5 +131,4 @@ public class EnvelopeWriter {
 
 		buf.flip();
 	}
-
 }

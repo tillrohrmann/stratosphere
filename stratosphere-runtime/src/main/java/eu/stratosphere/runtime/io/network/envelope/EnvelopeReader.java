@@ -150,7 +150,13 @@ public class EnvelopeReader {
 		}
 	}
 
-	private Envelope constructEnvelopeFromHeader(ByteBuffer header) {
+	private Envelope constructEnvelopeFromHeader(ByteBuffer header) throws IOException {
+		int magicNumber = header.getInt(EnvelopeWriter.MAGIC_NUMBER_OFFSET);
+
+		if (magicNumber != EnvelopeWriter.MAGIC_NUMBER) {
+			throw new IOException("Network stream corrupted: invalid magic number in envelope header.");
+		}
+
 		int seqNum = header.getInt(EnvelopeWriter.SEQUENCE_NUMBER_OFFSET);
 		JobID jid = JobID.fromByteBuffer(header, EnvelopeWriter.JOB_ID_OFFSET);
 		ChannelID cid = ChannelID.fromByteBuffer(header, EnvelopeWriter.CHANNEL_ID_OFFSET);

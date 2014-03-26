@@ -534,6 +534,8 @@ public class RegularPactTask<S extends Function, OT> extends AbstractTask implem
 
 			RegularPactTask.cancelChainedTasks(this.chainedTasks);
 
+			ex = ExceptionInChainedStubException.exceptionUnwrap(ex);
+
 			if (ex instanceof CancelTaskException) {
 				// forward canceling exception
 				throw ex;

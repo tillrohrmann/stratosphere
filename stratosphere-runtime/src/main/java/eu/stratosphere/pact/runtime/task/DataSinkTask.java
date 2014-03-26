@@ -15,6 +15,7 @@ package eu.stratosphere.pact.runtime.task;
 
 import java.io.IOException;
 
+import eu.stratosphere.pact.runtime.task.chaining.ExceptionInChainedStubException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -178,7 +179,10 @@ public class DataSinkTask<IT> extends AbstractOutputTask
 			}
 		}
 		catch (Exception ex) {
+			ex = ExceptionInChainedStubException.exceptionUnwrap(ex);
+
 			if (ex instanceof CancelTaskException) {
+				// forward canceling exception
 				throw ex;
 			}
 			// drop, if the task was canceled

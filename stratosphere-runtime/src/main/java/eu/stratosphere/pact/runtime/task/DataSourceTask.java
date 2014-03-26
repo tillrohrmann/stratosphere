@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 
+import eu.stratosphere.pact.runtime.task.chaining.ExceptionInChainedStubException;
 import eu.stratosphere.runtime.io.api.BufferWriter;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -250,7 +251,8 @@ public class DataSourceTask<OT> extends AbstractInputTask<InputSplit> {
 			
 			RegularPactTask.cancelChainedTasks(this.chainedTasks);
 			
-			
+			ex = ExceptionInChainedStubException.exceptionUnwrap(ex);
+
 			if (ex instanceof CancelTaskException) {
 				// forward canceling exception
 				throw ex;
