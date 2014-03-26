@@ -543,6 +543,8 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 			if (LOG.isDebugEnabled()) {
 				LOG.debug("Dropping envelope for cleaned up receiver.");
 			}
+
+			return;
 		}
 
 		if (!receiverList.hasLocalReceiver() || receiverList.hasRemoteReceiver()) {

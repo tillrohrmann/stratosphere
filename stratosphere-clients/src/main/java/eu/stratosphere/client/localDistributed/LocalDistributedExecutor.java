@@ -29,6 +29,7 @@ import eu.stratosphere.compiler.plantranslate.NepheleJobGraphGenerator;
 import eu.stratosphere.configuration.ConfigConstants;
 import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.configuration.GlobalConfiguration;
+import eu.stratosphere.nephele.client.JobCancelResult;
 import eu.stratosphere.nephele.client.JobClient;
 import eu.stratosphere.nephele.instance.local.LocalTaskManagerThread;
 import eu.stratosphere.nephele.jobgraph.JobGraph;
@@ -246,7 +247,10 @@ public class LocalDistributedExecutor extends PlanExecutor {
 		try {
 			JobClient jobClient = getJobClient(jobGraph);
 
-			return jobClient.submitJobAndWait();
+			jobClient.submitJobAndWait();
+
+
+
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
