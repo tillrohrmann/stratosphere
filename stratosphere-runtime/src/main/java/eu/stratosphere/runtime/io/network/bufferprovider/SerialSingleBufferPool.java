@@ -20,7 +20,7 @@ import eu.stratosphere.runtime.io.BufferRecycler;
 /**
  * 
  */
-public final class SerialSingleBuffePool implements BufferProvider, BufferRecycler {
+public final class SerialSingleBufferPool implements BufferProvider, BufferRecycler {
 	
 	private final Buffer buffer;
 
@@ -30,7 +30,7 @@ public final class SerialSingleBuffePool implements BufferProvider, BufferRecycl
 
 	// -----------------------------------------------------------------------------------------------------------------
 
-	public SerialSingleBuffePool(int bufferSize) {
+	public SerialSingleBufferPool(int bufferSize) {
 		this.buffer = new Buffer(new MemorySegment(new byte[bufferSize]), bufferSize, this);
 		this.bufferSize = bufferSize;
 	}

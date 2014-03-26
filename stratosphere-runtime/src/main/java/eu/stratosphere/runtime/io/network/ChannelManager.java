@@ -33,7 +33,7 @@ import eu.stratosphere.runtime.io.network.bufferprovider.BufferProvider;
 import eu.stratosphere.runtime.io.network.bufferprovider.BufferProviderBroker;
 import eu.stratosphere.runtime.io.network.bufferprovider.GlobalBufferPool;
 import eu.stratosphere.runtime.io.network.bufferprovider.LocalBufferPoolOwner;
-import eu.stratosphere.runtime.io.network.bufferprovider.SerialSingleBuffePool;
+import eu.stratosphere.runtime.io.network.bufferprovider.SerialSingleBufferPool;
 import eu.stratosphere.runtime.io.network.envelope.Envelope;
 import eu.stratosphere.runtime.io.network.envelope.EnvelopeDispatcher;
 import eu.stratosphere.runtime.io.network.envelope.EnvelopeReceiverList;
@@ -72,7 +72,7 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 	
 	private final InetSocketAddress ourAddress;
 	
-	private final SerialSingleBuffePool discardingDataPool;
+	private final SerialSingleBufferPool discardingDataPool;
 
 	// -----------------------------------------------------------------------------------------------------------------
 
@@ -91,7 +91,7 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 		this.ourAddress = new InetSocketAddress(connectionInfo.address(), connectionInfo.dataPort());
 		
 		// a special pool if the data is to be discarded
-		this.discardingDataPool = new SerialSingleBuffePool(networkBufferSize);
+		this.discardingDataPool = new SerialSingleBufferPool(networkBufferSize);
 	}
 
 	public void shutdown() {
