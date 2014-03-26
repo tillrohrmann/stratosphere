@@ -521,7 +521,9 @@ public class ExecutionGraph implements ExecutionListener {
 
 			final OutputFormat<?> outputFormat = jobOutputVertex.getOutputFormat();
 
-			outputFormat.initialize(groupVertex.getConfiguration());
+			if(outputFormat != null){
+				outputFormat.initialize(groupVertex.getConfiguration());
+			}
 		}
 
 		// Add group vertex to initial execution stage

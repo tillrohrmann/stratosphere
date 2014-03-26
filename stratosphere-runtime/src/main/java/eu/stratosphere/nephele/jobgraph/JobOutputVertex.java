@@ -127,10 +127,10 @@ public class JobOutputVertex extends AbstractJobOutputVertex {
 		config.setClassLoader(cl);
 		final TaskConfig taskConfig = new TaskConfig(config);
 
-
-		outputFormat = taskConfig.<OutputFormat<?> >getStubWrapper(cl).getUserCodeObject(OutputFormat.class,cl);
-
-		outputFormat.configure(taskConfig.getStubParameters());
+		if(taskConfig.hasStubWrapper()){
+			outputFormat = taskConfig.<OutputFormat<?> >getStubWrapper(cl).getUserCodeObject(OutputFormat.class,cl);
+			outputFormat.configure(taskConfig.getStubParameters());
+		}
 	}
 
 	public OutputFormat<?> getOutputFormat() { return outputFormat; }
