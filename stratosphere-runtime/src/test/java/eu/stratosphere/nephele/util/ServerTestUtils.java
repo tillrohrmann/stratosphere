@@ -56,6 +56,11 @@ public final class ServerTestUtils {
 	private static final String ECLIPSE_PATH_EXTENSION = "/src/test/resources";
 
 	/**
+	 * The directory the configuration directory is expected in when test are executed using IntelliJ.
+	 */
+	private static final String INTELLIJ_PATH_EXTENSIONS = "/stratosphere-runtime/src/test/resources";
+
+	/**
 	 * Private constructor.
 	 */
 	private ServerTestUtils() {
@@ -198,6 +203,11 @@ public final class ServerTestUtils {
 
 		configDir = System.getProperty(USER_DIR_KEY) + ECLIPSE_PATH_EXTENSION + CORRECT_CONF_DIR;
 		if (new File(configDir).exists()) {
+			return configDir;
+		}
+
+		configDir = System.getProperty(USER_DIR_KEY) + INTELLIJ_PATH_EXTENSIONS + CORRECT_CONF_DIR;
+		if(new File(configDir).exists()){
 			return configDir;
 		}
 

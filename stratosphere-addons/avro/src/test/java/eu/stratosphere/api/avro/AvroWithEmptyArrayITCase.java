@@ -184,6 +184,9 @@ public class AvroWithEmptyArrayITCase extends TestBase2 {
 
 		@Override
 		public void close() {}
+
+		@Override
+		public void initialize(Configuration configuration){}
 	}
 
 	public static class MyCoGrouper extends CoGroupFunction {

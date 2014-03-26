@@ -335,4 +335,7 @@ public class JDBCOutputFormat implements OutputFormat<Record> {
             super(targetConfig);
         }
     }
+
+	@Override
+	public void initialize(Configuration configuration){}
 }

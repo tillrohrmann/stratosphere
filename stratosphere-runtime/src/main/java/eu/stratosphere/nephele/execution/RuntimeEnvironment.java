@@ -167,43 +167,6 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 	private LocalBufferPool outputBufferPool;
 
 	/**
-	 * Creates a new runtime environment object which contains the runtime information for the encapsulated Nephele
-	 * task.
-	 * 
-	 * @param jobID
-	 *        the ID of the original Nephele job
-	 * @param taskName
-	 *        the name of task running in this environment
-	 * @param invokableClass
-	 *        invokableClass the class that should be instantiated as a Nephele task
-	 * @param taskConfiguration
-	 *        the configuration object which was attached to the original JobVertex
-	 * @param jobConfiguration
-	 *        the configuration object which was attached to the original {@link JobGraph}
-	 * @throws Exception
-	 *         thrown if an error occurs while instantiating the invokable class
-	 */
-	public RuntimeEnvironment(final JobID jobID, final String taskName,
-			final Class<? extends AbstractInvokable> invokableClass, final Configuration taskConfiguration,
-			final Configuration jobConfiguration) throws Exception {
-
-		this.jobID = jobID;
-		this.taskName = taskName;
-		this.invokableClass = invokableClass;
-		this.taskConfiguration = taskConfiguration;
-		this.jobConfiguration = jobConfiguration;
-		this.indexInSubtaskGroup = 0;
-		this.currentNumberOfSubtasks = 0;
-		this.memoryManager = null;
-		this.ioManager = null;
-		this.inputSplitProvider = null;
-
-		this.invokable = this.invokableClass.newInstance();
-		this.invokable.setEnvironment(this);
-		this.invokable.registerInputOutput();
-	}
-
-	/**
 	 * Constructs a runtime environment from a task deployment description.
 	 * 
 	 * @param tdd
