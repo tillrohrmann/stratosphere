@@ -28,14 +28,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
-import eu.stratosphere.api.common.io.InputFormat;
 import eu.stratosphere.api.common.io.OutputFormat;
 import eu.stratosphere.nephele.jobgraph.*;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import eu.stratosphere.configuration.Configuration;
-import eu.stratosphere.configuration.IllegalConfigurationException;
 import eu.stratosphere.core.io.InputSplit;
 import eu.stratosphere.nephele.execution.ExecutionListener;
 import eu.stratosphere.nephele.execution.ExecutionState;
@@ -47,7 +45,6 @@ import eu.stratosphere.runtime.io.gates.GateID;
 import eu.stratosphere.runtime.io.channels.ChannelID;
 import eu.stratosphere.runtime.io.channels.ChannelType;
 import eu.stratosphere.nephele.taskmanager.ExecutorThreadFactory;
-import eu.stratosphere.nephele.template.AbstractInputTask;
 import eu.stratosphere.nephele.template.AbstractInvokable;
 import eu.stratosphere.util.StringUtils;
 
@@ -514,6 +511,7 @@ public class ExecutionGraph implements ExecutionListener {
 
 			final OutputFormat<?> outputFormat = jobOutputVertex.getOutputFormat();
 
+			//Call initialize method only if the vertex has  an output format specified
 			if(outputFormat != null){
 				outputFormat.initialize(groupVertex.getConfiguration());
 			}
@@ -1055,7 +1053,9 @@ public class ExecutionGraph implements ExecutionListener {
 				if (eg.jobHasFailedOrCanceledStatus()) {
 					return InternalJobStatus.CANCELED;
 				}
-			}else if(latestStateChange == ExecutionState.FAILED){
+			}
+			// Allow failing also if the job is in the created state
+			else if(latestStateChange == ExecutionState.FAILED){
 				return InternalJobStatus.FAILING;
 			}
 			break;
@@ -1066,7 +1066,9 @@ public class ExecutionGraph implements ExecutionListener {
 				if (eg.jobHasFailedOrCanceledStatus()) {
 					return InternalJobStatus.CANCELED;
 				}
-			}else if(latestStateChange == ExecutionState.FAILED){
+			}
+			// Allow failing also if the job is in the scheduled state
+			else if(latestStateChange == ExecutionState.FAILED){
 				return InternalJobStatus.FAILING;
 			}
 			break;

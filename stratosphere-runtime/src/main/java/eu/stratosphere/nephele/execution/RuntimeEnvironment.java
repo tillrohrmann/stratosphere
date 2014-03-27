@@ -178,7 +178,7 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 	public RuntimeEnvironment(final TaskDeploymentDescriptor tdd,
 			final MemoryManager memoryManager, final IOManager ioManager,
 			final InputSplitProvider inputSplitProvider,
-			AccumulatorProtocol accumulatorProtocolProxy) throws Exception{
+			AccumulatorProtocol accumulatorProtocolProxy) throws Exception {
 
 		this.jobID = tdd.getJobID();
 		this.taskName = tdd.getTaskName();
@@ -191,9 +191,11 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 		this.ioManager = ioManager;
 		this.inputSplitProvider = inputSplitProvider;
 		this.accumulatorProtocolProxy = accumulatorProtocolProxy;
+
 		this.invokable = this.invokableClass.newInstance();
 		this.invokable.setEnvironment(this);
 		this.invokable.registerInputOutput();
+
 		int numOutputGates = tdd.getNumberOfOutputGateDescriptors();
 
 		for (int i = 0; i < numOutputGates; ++i) {
