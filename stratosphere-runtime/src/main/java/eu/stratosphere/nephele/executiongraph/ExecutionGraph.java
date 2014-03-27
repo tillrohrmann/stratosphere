@@ -482,13 +482,6 @@ public class ExecutionGraph implements ExecutionListener {
 			throw new GraphConversionException(StringUtils.stringifyException(t));
 		}
 
-		// Run the configuration check
-		try {
-			jobVertex.checkConfiguration(groupVertex.getConfiguration());
-		} catch (IllegalConfigurationException e) {
-			throw new GraphConversionException(StringUtils.stringifyException(e));
-		}
-
 		// Register input and output vertices separately
 		if (jobVertex instanceof AbstractJobInputVertex) {
 
