@@ -177,7 +177,7 @@ public abstract class AbstractTestBase {
 		return getResultReader(resultPath, false);
 	}
 	
-	public BufferedReader[] getResultReader(String resultPath, boolean inOrderOfFiles) throws IOException {
+	public static BufferedReader[] getResultReader(String resultPath, boolean inOrderOfFiles) throws IOException {
 		File[] files = getAllInvolvedFiles(resultPath);
 		
 		if (inOrderOfFiles) {
@@ -255,7 +255,7 @@ public abstract class AbstractTestBase {
 		Assert.assertArrayEquals(expected, result);
 	}
 	
-	private File[] getAllInvolvedFiles(String resultPath) {
+	private static File[] getAllInvolvedFiles(String resultPath) {
 		File result = asFile(resultPath);
 		if (!result.exists()) {
 			Assert.fail("Result file was not written");
@@ -267,7 +267,7 @@ public abstract class AbstractTestBase {
 		}
 	}
 	
-	public File asFile(String path) {
+	public static File asFile(String path) {
 		try {
 			URI uri = new URI(path);
 			if (uri.getScheme().equals("file")) {

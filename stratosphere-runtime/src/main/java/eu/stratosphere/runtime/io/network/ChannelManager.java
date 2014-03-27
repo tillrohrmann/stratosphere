@@ -14,6 +14,7 @@
 package eu.stratosphere.runtime.io.network;
 
 import eu.stratosphere.core.io.IOReadableWritable;
+import eu.stratosphere.nephele.execution.CancelTaskException;
 import eu.stratosphere.nephele.execution.Environment;
 import eu.stratosphere.nephele.execution.RuntimeEnvironment;
 import eu.stratosphere.nephele.executiongraph.ExecutionVertexID;
@@ -32,6 +33,7 @@ import eu.stratosphere.runtime.io.network.bufferprovider.BufferProvider;
 import eu.stratosphere.runtime.io.network.bufferprovider.BufferProviderBroker;
 import eu.stratosphere.runtime.io.network.bufferprovider.GlobalBufferPool;
 import eu.stratosphere.runtime.io.network.bufferprovider.LocalBufferPoolOwner;
+import eu.stratosphere.runtime.io.network.bufferprovider.SerialSingleBuffePool;
 import eu.stratosphere.runtime.io.network.envelope.Envelope;
 import eu.stratosphere.runtime.io.network.envelope.EnvelopeDispatcher;
 import eu.stratosphere.runtime.io.network.envelope.EnvelopeReceiverList;
@@ -43,8 +45,6 @@ import org.apache.commons.logging.LogFactory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -69,6 +69,10 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 	private final GlobalBufferPool globalBufferPool;
 
 	private final NetworkConnectionManager networkConnectionManager;
+	
+	private final InetSocketAddress ourAddress;
+	
+	private final SerialSingleBuffePool discardingDataPool;
 
 	// -----------------------------------------------------------------------------------------------------------------
 
@@ -83,6 +87,11 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 		this.channels = new ConcurrentHashMap<ChannelID, Channel>();
 		this.receiverCache = new ConcurrentHashMap<ChannelID, EnvelopeReceiverList>();
 		this.localBuffersPools = new ConcurrentHashMap<AbstractID, LocalBufferPoolOwner>();
+		
+		this.ourAddress = new InetSocketAddress(connectionInfo.address(), connectionInfo.dataPort());
+		
+		// a special pool if the data is to be discarded
+		this.discardingDataPool = new SerialSingleBuffePool(networkBufferSize);
 	}
 
 	public void shutdown() {
@@ -269,141 +278,6 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 	//                                           Envelope processing
 	// -----------------------------------------------------------------------------------------------------------------
 
-	private void processEnvelope(Envelope envelope, boolean freeSourceBuffer) throws IOException {
-		EnvelopeReceiverList receiverList;
-
-		try {
-			receiverList = getReceiverList(envelope.getJobID(), envelope.getSource());
-		} catch (IOException e) {
-			releaseEnvelope(envelope);
-			throw e;
-		}
-
-		if (receiverList == null) {
-			releaseEnvelope(envelope);
-			return;
-		}
-
-		// This envelope is known to have either no buffer or a memory-based input buffer
-		if (envelope.getBuffer() == null) {
-			processEnvelopeWithoutBuffer(envelope, receiverList);
-		} else {
-			processEnvelopeWithBuffer(envelope, receiverList, freeSourceBuffer);
-		}
-	}
-
-	private void processEnvelopeWithBuffer(Envelope envelope, EnvelopeReceiverList receiverList, boolean freeSourceBuffer) throws IOException {
-		// Handle the most common (unicast) case first
-		if (!freeSourceBuffer) {
-
-			List<ChannelID> localReceivers = receiverList.getLocalReceivers();
-			if (localReceivers.size() != 1) {
-				LOG.error("Expected receiver list to have exactly one element");
-			}
-
-			ChannelID localReceiver = localReceivers.get(0);
-
-			Channel channel = this.channels.get(localReceiver);
-			if (channel == null) {
-				releaseEnvelope(envelope);
-				throw new LocalReceiverCancelledException(localReceiver);
-			}
-
-			if (!channel.isInputChannel()) {
-				releaseEnvelope(envelope);
-				throw new IOException("Local receiver " + localReceiver + " is not an input channel.");
-			}
-
-			channel.queueEnvelope(envelope);
-
-			return;
-		}
-
-		// This is the in-memory or multicast case
-		final Buffer srcBuffer = envelope.getBuffer();
-
-		try {
-			if (receiverList.hasLocalReceivers()) {
-				for (ChannelID receiver : receiverList.getLocalReceivers()) {
-					Channel channel = this.channels.get(receiver);
-
-					if (channel == null) {
-						throw new LocalReceiverCancelledException(receiver);
-					}
-
-					if (!channel.isInputChannel()) {
-						throw new IOException("Local receiver " + receiver + " is not an input channel.");
-					}
-
-					final InputChannel<?> inputChannel = (InputChannel<?>) channel;
-
-					Buffer destBuffer = null;
-					try {
-						try {
-							destBuffer = inputChannel.requestBufferBlocking(srcBuffer.size());
-						} catch (InterruptedException e) {
-							throw new IOException(e.getMessage());
-						}
-						srcBuffer.copyToBuffer(destBuffer);
-					} catch (IOException e) {
-						if (destBuffer != null) {
-							destBuffer.recycleBuffer();
-						}
-						throw e;
-					}
-					// TODO: See if we can save one duplicate step here
-					final Envelope dup = envelope.duplicateWithoutBuffer();
-					dup.setBuffer(destBuffer);
-					inputChannel.queueEnvelope(dup);
-				}
-			}
-
-			if (receiverList.hasRemoteReceivers()) {
-				List<RemoteReceiver> remoteReceivers = receiverList.getRemoteReceivers();
-
-				// Generate sender hint before sending the first envelope over the network
-				if (envelope.getSequenceNumber() == 0) {
-					generateSenderHint(envelope, remoteReceivers);
-				}
-
-				for (RemoteReceiver receiver : remoteReceivers) {
-					Envelope dup = envelope.duplicate();
-					this.networkConnectionManager.queueEnvelopeForTransfer(receiver, dup);
-				}
-			}
-		} finally {
-			// Recycle the source buffer
-			srcBuffer.recycleBuffer();
-		}
-	}
-
-	private void processEnvelopeWithoutBuffer(Envelope envelope, EnvelopeReceiverList receiverList) throws IOException {
-		// local receivers => no need to copy anything
-		for (ChannelID receiverId : receiverList.getLocalReceivers()) {
-			Channel receiver = this.channels.get(receiverId);
-
-			if (receiver == null) {
-				throw new LocalReceiverCancelledException(receiverId);
-			}
-
-			receiver.queueEnvelope(envelope);
-		}
-
-		// remote receivers => sender hint and queue envelopes
-		if (receiverList.hasRemoteReceivers()) {
-			List<RemoteReceiver> remoteReceivers = receiverList.getRemoteReceivers();
-
-			// Generate sender hint before sending the first envelope over the network
-			if (envelope.getSequenceNumber() == 0) {
-				generateSenderHint(envelope, remoteReceivers);
-			}
-
-			for (RemoteReceiver receiver : remoteReceivers) {
-				this.networkConnectionManager.queueEnvelopeForTransfer(receiver, envelope);
-			}
-		}
-	}
-
 	private void releaseEnvelope(Envelope envelope) {
 		Buffer buffer = envelope.getBuffer();
 		if (buffer != null) {
@@ -427,7 +301,7 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 		}
 	}
 
-	private void generateSenderHint(Envelope envelope, List<RemoteReceiver> remoteReceivers) {
+	private void generateSenderHint(Envelope envelope, RemoteReceiver receiver) {
 		Channel channel = this.channels.get(envelope.getSource());
 		if (channel == null) {
 			LOG.error("Cannot find channel for channel ID " + envelope.getSource());
@@ -439,18 +313,13 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 			return;
 		}
 
-		final ChannelID remoteSourceID = channel.getConnectedId();
-		final int connectionIndex = remoteReceivers.get(0).getConnectionIndex();
-		final InetSocketAddress isa = new InetSocketAddress(this.connectionInfo.address(),
-			this.connectionInfo.dataPort());
+		final ChannelID targetChannelID = channel.getConnectedId();
+		final int connectionIndex = receiver.getConnectionIndex();
 
-		final RemoteReceiver remoteReceiver = new RemoteReceiver(isa, connectionIndex);
-		final Envelope senderHint = SenderHintEvent.createEnvelopeWithEvent(envelope, remoteSourceID,
-			remoteReceiver);
+		final RemoteReceiver ourAddress = new RemoteReceiver(this.ourAddress, connectionIndex);
+		final Envelope senderHint = SenderHintEvent.createEnvelopeWithEvent(envelope, targetChannelID, ourAddress);
 
-		for (RemoteReceiver receiver : remoteReceivers) {
-			this.networkConnectionManager.queueEnvelopeForTransfer(receiver, senderHint);
-		}
+		this.networkConnectionManager.queueEnvelopeForTransfer(receiver, senderHint);
 	}
 
 	/**
@@ -464,7 +333,7 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 	 * @throws IOException
 	 * @throws InterruptedException
 	 */
-	private EnvelopeReceiverList getReceiverList(JobID jobID, ChannelID sourceChannelID) throws IOException {
+	private EnvelopeReceiverList getReceiverList(JobID jobID, ChannelID sourceChannelID, boolean reportException) throws IOException {
 		EnvelopeReceiverList receiverList = this.receiverCache.get(sourceChannelID);
 
 		if (receiverList != null) {
@@ -472,66 +341,50 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 		}
 
 		while (true) {
-			if (Thread.currentThread().isInterrupted()) {
-				break;
-			}
-
 			ConnectionInfoLookupResponse lookupResponse;
 			synchronized (this.channelLookupService) {
-				lookupResponse = this.channelLookupService.lookupConnectionInfo(
-					this.connectionInfo, jobID, sourceChannelID);
-			}
-
-			if (lookupResponse.isJobAborting()) {
-				break;
-			}
-
-			if (lookupResponse.receiverNotFound()) {
-				LOG.error("Cannot find task(s) waiting for data from source channel with ID " + sourceChannelID);
-				break;
-			}
-
-			if (lookupResponse.receiverNotReady()) {
-				try {
-					Thread.sleep(500);
-				} catch (InterruptedException e) {
-					throw new IOException("Lookup was interrupted.");
-				}
-				continue;
+				lookupResponse = this.channelLookupService.lookupConnectionInfo(this.connectionInfo, jobID, sourceChannelID);
 			}
 
 			if (lookupResponse.receiverReady()) {
 				receiverList = new EnvelopeReceiverList(lookupResponse);
 				break;
 			}
+			else if (lookupResponse.receiverNotReady()) {
+				try {
+					Thread.sleep(500);
+				} catch (InterruptedException e) {
+					if (reportException) {
+						throw new IOException("Lookup was interrupted.");
+					} else {
+						return null;
+					}
+				}
+			}
+			else if (lookupResponse.isJobAborting()) {
+				if (reportException) {
+					throw new CancelTaskException();
+				} else {
+					return null;
+				}
+			}
+			else if (lookupResponse.receiverNotFound()) {
+				if (reportException) {
+					throw new IOException("Could not find the receiver for Job " + jobID + ", channel with source id " + sourceChannelID);
+				} else {
+					return null;
+				}
+			}
+			else {
+				throw new IllegalStateException("Unrecognized response to channel lookup.");
+			}
 		}
 
-		if (receiverList != null) {
-			this.receiverCache.put(sourceChannelID, receiverList);
+		this.receiverCache.put(sourceChannelID, receiverList);
 
-			if (LOG.isDebugEnabled()) {
-				final StringBuilder sb = new StringBuilder();
-				sb.append("Receiver list for source channel ID " + sourceChannelID + " at task manager "
-					+ this.connectionInfo + "\n");
-
-				if (receiverList.hasLocalReceivers()) {
-					sb.append("\tLocal receivers:\n");
-					final Iterator<ChannelID> it = receiverList.getLocalReceivers().iterator();
-					while (it.hasNext()) {
-						sb.append("\t\t" + it.next() + "\n");
-					}
-				}
-
-				if (receiverList.hasRemoteReceivers()) {
-					sb.append("Remote receivers:\n");
-					final Iterator<RemoteReceiver> it = receiverList.getRemoteReceivers().iterator();
-					while (it.hasNext()) {
-						sb.append("\t\t" + it.next() + "\n");
-					}
-				}
-
-				LOG.debug(sb.toString());
-			}
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("Receivers for source channel ID " + sourceChannelID + " at task manager " + this.connectionInfo +
+				": " + receiverList);
 		}
 
 		return receiverList;
@@ -554,16 +407,123 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 
 	@Override
 	public void dispatchFromOutputChannel(Envelope envelope) throws IOException, InterruptedException {
-		processEnvelope(envelope, true);
+		EnvelopeReceiverList receiverList = getReceiverListForEnvelope(envelope, true);
+
+		Buffer srcBuffer = envelope.getBuffer();
+		Buffer destBuffer = null;
+		
+		boolean success = false;
+		
+		try {
+			if (receiverList.hasLocalReceiver()) {
+				ChannelID receiver = receiverList.getLocalReceiver();
+				Channel channel = this.channels.get(receiver);
+
+				if (channel == null) {
+					throw new LocalReceiverCancelledException(receiver);
+				}
+
+				if (!channel.isInputChannel()) {
+					throw new IOException("Local receiver " + receiver + " is not an input channel.");
+				}
+
+				InputChannel<?> inputChannel = (InputChannel<?>) channel;
+				
+				// copy the buffer into the memory space of the receiver 
+				if (srcBuffer != null) {
+					try {
+						destBuffer = inputChannel.requestBufferBlocking(srcBuffer.size());
+					} catch (InterruptedException e) {
+						throw new IOException(e.getMessage());
+					}
+					
+					srcBuffer.copyToBuffer(destBuffer);
+					envelope.setBuffer(destBuffer);
+					srcBuffer.recycleBuffer();
+				}
+				
+				inputChannel.queueEnvelope(envelope);
+				success = true;
+			}
+			else if (receiverList.hasRemoteReceiver()) {
+				RemoteReceiver remoteReceiver = receiverList.getRemoteReceiver();
+
+				// Generate sender hint before sending the first envelope over the network
+				if (envelope.getSequenceNumber() == 0) {
+					generateSenderHint(envelope, remoteReceiver);
+				}
+
+				this.networkConnectionManager.queueEnvelopeForTransfer(remoteReceiver, envelope);
+				success = true;
+			}
+		} finally {
+			if (!success) {
+				if (srcBuffer != null) {
+					srcBuffer.recycleBuffer();
+				}
+				if (destBuffer != null) {
+					destBuffer.recycleBuffer();
+				}
+			}
+		}
 	}
 
 	@Override
 	public void dispatchFromInputChannel(Envelope envelope) throws IOException, InterruptedException {
-		processEnvelope(envelope, false);
+		// this method sends only events back from input channels to output channels
+		// sanity check that we have no buffer
+		if (envelope.getBuffer() != null) {
+			throw new RuntimeException("Error: This method can only process envelopes without buffers.");
+		}
+		
+		EnvelopeReceiverList receiverList = getReceiverListForEnvelope(envelope, true);
+
+		if (receiverList.hasLocalReceiver()) {
+			ChannelID receiver = receiverList.getLocalReceiver();
+			Channel channel = this.channels.get(receiver);
+
+			if (channel == null) {
+				throw new LocalReceiverCancelledException(receiver);
+			}
+
+			if (channel.isInputChannel()) {
+				throw new IOException("Local receiver " + receiver + " of backward event is not an output channel.");
+			}
+
+			OutputChannel outputChannel = (OutputChannel) channel;
+			outputChannel.queueEnvelope(envelope);
+		}
+		else if (receiverList.hasRemoteReceiver()) {
+			RemoteReceiver remoteReceiver = receiverList.getRemoteReceiver();
+
+			// Generate sender hint before sending the first envelope over the network
+			if (envelope.getSequenceNumber() == 0) {
+				generateSenderHint(envelope, remoteReceiver);
+			}
+
+			this.networkConnectionManager.queueEnvelopeForTransfer(remoteReceiver, envelope);
+		}
 	}
 
+	/**
+	 * 
+	 */
 	@Override
-	public void dispatchFromNetwork(Envelope envelope, boolean freeSourceBuffer) throws IOException, InterruptedException {
+	public void dispatchFromNetwork(Envelope envelope) throws IOException, InterruptedException {
+		// ========================================================================================
+		//  IMPORTANT
+		//  
+		//  This method is called by the network I/O thread that reads the incoming TCP 
+		//  connections. This method must have minimal overhead and not throw exception if
+		//  something is wrong with a job or individual transmission, but only when something
+		//  is fundamentally broken in the system.
+		// ========================================================================================
+		
+		// the sender hint event is to let the receiver know where exactly the envelope came from.
+		// the receiver will cache the sender id and its connection info in its local lookup table
+		// that allows the receiver to send envelopes to the sender without first pinging the job manager
+		// for the sender's connection info
+		
 		// Check if the envelope is the special envelope with the sender hint event
 		if (SenderHintEvent.isSenderHintEvent(envelope)) {
 			// Check if this is the final destination of the sender hint event before adding it
@@ -573,46 +533,89 @@ public final class ChannelManager implements EnvelopeDispatcher, BufferProviderB
 				return;
 			}
 		}
+		
+		// try and get the receiver list. if we cannot get it anymore, the task has been cleared
+		// the code frees the envelope on exception, so we need not to anything
+		EnvelopeReceiverList receiverList = getReceiverListForEnvelope(envelope, false);
+		if (receiverList == null) {
+			// receiver is cancelled and cleaned away
+			releaseEnvelope(envelope);
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("Dropping envelope for cleaned up receiver.");
+			}
+		}
 
-		processEnvelope(envelope, freeSourceBuffer);
+		if (!receiverList.hasLocalReceiver() || receiverList.hasRemoteReceiver()) {
+			throw new IOException("Bug in network stack: Envelope dispatched from the incoming network pipe has no local receiver or has a remote receiver");
+		}
+
+		ChannelID localReceiver = receiverList.getLocalReceiver();
+		Channel channel = this.channels.get(localReceiver);
+		
+		// if the channel is null, it means that receiver has been cleared already (cancelled or failed).
+		// release the buffer immediately
+		if (channel == null) {
+			releaseEnvelope(envelope);
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("Dropping envelope for cancelled receiver " + localReceiver);
+			}
+		}
+		else {
+			channel.queueEnvelope(envelope);
+		}
 	}
 
+	/**
+	 * 
+	 * Upon an exception, this method frees the envelope.
+	 * 
+	 * @param envelope
+	 * @return
+	 * @throws IOException
+	 */
+	private final EnvelopeReceiverList getReceiverListForEnvelope(Envelope envelope, boolean reportException) throws IOException {
+		try {
+			return getReceiverList(envelope.getJobID(), envelope.getSource(), reportException);
+		} catch (IOException e) {
+			releaseEnvelope(envelope);
+			throw e;
+		} catch (CancelTaskException e) {
+			releaseEnvelope(envelope);
+			throw e;
+		}
+	}
+	
 	// -----------------------------------------------------------------------------------------------------------------
 	//                                       BufferProviderBroker methods
 	// -----------------------------------------------------------------------------------------------------------------
 
 	@Override
 	public BufferProvider getBufferProvider(JobID jobID, ChannelID sourceChannelID) throws IOException {
-		final EnvelopeReceiverList receiverList = getReceiverList(jobID, sourceChannelID);
-
-		// Receiver could not be determined, use transit buffer pool to read data from channel
+		EnvelopeReceiverList receiverList = getReceiverList(jobID, sourceChannelID, false);
+		
+		// check if the receiver is already gone
 		if (receiverList == null) {
-			throw new IOException("Receiver for channel was not found.");
+			return this.discardingDataPool;
 		}
 
-		if (receiverList.hasLocalReceivers() && !receiverList.hasRemoteReceivers()) {
+		if (!receiverList.hasLocalReceiver() || receiverList.hasRemoteReceiver()) {
+			throw new IOException("The destination to be looked up is not a single local endpoint.");
+		}
+		
 
-			final List<ChannelID> localReceivers = receiverList.getLocalReceivers();
-			if (localReceivers.size() == 1) {
-				// Unicast case, get final buffer provider
-
-				final ChannelID localReceiver = localReceivers.get(0);
-				final Channel channel = this.channels.get(localReceiver);
-				if (channel == null) {
-					// Use the transit buffer for this purpose, data will be discarded in most cases anyway.
-					throw new IOException("Receiver for input was not found.");
-				}
-
-				if (!channel.isInputChannel()) {
-					throw new IOException("Channel context for local receiver " + localReceiver
-							+ " is not an input channel context");
-				}
-
-				return (InputChannel<?>) channel;
-			}
+		ChannelID localReceiver = receiverList.getLocalReceiver();
+		Channel channel = this.channels.get(localReceiver);
+		
+		if (channel == null) {
+			// receiver is already canceled
+			return this.discardingDataPool;
 		}
 
-		throw new IOException("The destination to be looked up is not a single local endpoint.");
+		if (!channel.isInputChannel()) {
+			throw new IOException("Channel context for local receiver " + localReceiver + " is not an input channel context");
+		}
+
+		return (InputChannel<?>) channel;
 	}
 
 	// -----------------------------------------------------------------------------------------------------------------

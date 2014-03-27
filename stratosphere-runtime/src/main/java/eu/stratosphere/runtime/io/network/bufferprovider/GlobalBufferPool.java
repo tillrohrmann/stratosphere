@@ -33,8 +33,6 @@ public final class GlobalBufferPool {
 
 	private final static Log LOG = LogFactory.getLog(GlobalBufferPool.class);
 
-	private final static GlobalBufferPool instance = new GlobalBufferPool(2048, 32768);
-
 	// -----------------------------------------------------------------------------------------------------------------
 
 	/** Total number of buffers */

@@ -12,10 +12,12 @@
  **********************************************************************************************************************/
 package eu.stratosphere.test.localDistributed;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileWriter;
 import java.net.URL;
-import java.util.LinkedList;
+import java.util.ArrayList;
+import java.util.Collections;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -27,6 +29,7 @@ import eu.stratosphere.example.java.record.wordcount.WordCount;
 import eu.stratosphere.test.testdata.ConnectedComponentsData;
 import eu.stratosphere.test.testdata.KMeansData;
 import eu.stratosphere.test.testdata.WordCountData;
+import eu.stratosphere.test.util.AbstractTestBase;
 import eu.stratosphere.util.LogUtils;
 
 // When the API changes WordCountForTest needs to be rebuilt and the WordCountForTest.jar in resources needs
@@ -99,7 +102,7 @@ public class PackagedProgramEndToEndITCase {
 			// run WordCount
 
 			lde.start(2);
-			RemoteExecutor ex = new RemoteExecutor("localhost", 6498, new LinkedList<String>());
+			RemoteExecutor ex = new RemoteExecutor("localhost", 6498, Collections.<String>emptyList());
 
 			ex.executeJar(jarPath,
 					"eu.stratosphere.examples.scala.testing.KMeansForTest",
@@ -107,8 +110,21 @@ public class PackagedProgramEndToEndITCase {
 							points.toURI().toString(),
 							clusters.toURI().toString(),
 							outFile.toURI().toString(),
-							"1"});
-
+							"20"});
+			
+			
+			ArrayList<String> resultLines = new ArrayList<String>();
+			
+			BufferedReader[] readers = AbstractTestBase.getResultReader(outFile.toURI().toString(), false);
+			for (BufferedReader reader : readers) {
+				String s = null;
+				while ((s = reader.readLine()) != null) {
+					resultLines.add(s);
+				}
+			}
+			
+			KMeansData.checkResultsWithDelta(KMeansData.CENTERS_AFTER_20_ITERATIONS_DOUBLE_DIGIT, resultLines, 0.1f);
+			
 			points.delete();
 			clusters.delete();
 			outFile.delete();

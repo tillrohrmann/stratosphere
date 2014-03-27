@@ -753,8 +753,7 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 
 
 	@Override
-	public ConnectionInfoLookupResponse lookupConnectionInfo(final InstanceConnectionInfo caller, final JobID jobID,
-			final ChannelID sourceChannelID) {
+	public ConnectionInfoLookupResponse lookupConnectionInfo(InstanceConnectionInfo caller, JobID jobID, ChannelID sourceChannelID) {
 
 		final ExecutionGraph eg = this.scheduler.getExecutionGraphByID(jobID);
 		if (eg == null) {
@@ -775,7 +774,6 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 
 		if (sourceChannelID.equals(edge.getInputChannelID())) {
 			// Request was sent from an input channel
-
 			final ExecutionVertex connectedVertex = edge.getOutputGate().getVertex();
 
 			final AbstractInstance assignedInstance = connectedVertex.getAllocatedResource().getInstance();
@@ -789,9 +787,11 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 			// Check execution state
 			final ExecutionState executionState = connectedVertex.getExecutionState();
 			if (executionState == ExecutionState.FINISHED) {
-				return ConnectionInfoLookupResponse.createReceiverFoundAndReady();
+				// that should not happen. if there is data pending, the receiver cannot be ready
+				return ConnectionInfoLookupResponse.createReceiverNotFound();
 			}
 
+			// running is common, finishing is happens when the lookup is for the close event
 			if (executionState != ExecutionState.RUNNING && executionState != ExecutionState.FINISHING) {
 				// LOG.info("Created receiverNotReady for " + connectedVertex + " in state " + executionState + " 2");
 				return ConnectionInfoLookupResponse.createReceiverNotReady();
@@ -802,37 +802,29 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 				return ConnectionInfoLookupResponse.createReceiverFoundAndReady(edge.getOutputChannelID());
 			} else {
 				// Receiver runs on a different task manager
-
 				final InstanceConnectionInfo ici = assignedInstance.getInstanceConnectionInfo();
 				final InetSocketAddress isa = new InetSocketAddress(ici.address(), ici.dataPort());
 
-				return ConnectionInfoLookupResponse.createReceiverFoundAndReady(new RemoteReceiver(isa, edge
-					.getConnectionID()));
+				return ConnectionInfoLookupResponse.createReceiverFoundAndReady(new RemoteReceiver(isa, edge.getConnectionID()));
 			}
 		}
-
+		// else, the request is for an output channel
 		// Find vertex of connected input channel
 		final ExecutionVertex targetVertex = edge.getInputGate().getVertex();
 
 		// Check execution state
 		final ExecutionState executionState = targetVertex.getExecutionState();
 
-		if (executionState != ExecutionState.RUNNING && executionState != ExecutionState.FINISHING
-				&& executionState != ExecutionState.FINISHED) {
+		// check whether the task needs to be deployed
+		if (executionState != ExecutionState.RUNNING && executionState != ExecutionState.FINISHING && executionState != ExecutionState.FINISHED) {
 
 			if (executionState == ExecutionState.ASSIGNED) {
-
 				final Runnable command = new Runnable() {
-
-					/**
-					 * {@inheritDoc}
-					 */
 					@Override
 					public void run() {
 						scheduler.deployAssignedVertices(targetVertex);
 					}
 				};
-
 				eg.executeCommand(command);
 			}
 
@@ -842,8 +834,7 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 
 		final AbstractInstance assignedInstance = targetVertex.getAllocatedResource().getInstance();
 		if (assignedInstance == null) {
-			LOG.error("Cannot resolve lookup: vertex found for channel ID " + edge.getInputChannelID()
-				+ " but no instance assigned");
+			LOG.error("Cannot resolve lookup: vertex found for channel ID " + edge.getInputChannelID() + " but no instance assigned");
 			// LOG.info("Created receiverNotReady for " + targetVertex + " in state " + executionState + " 4");
 			return ConnectionInfoLookupResponse.createReceiverNotReady();
 		}
@@ -856,8 +847,7 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 			final InstanceConnectionInfo ici = assignedInstance.getInstanceConnectionInfo();
 			final InetSocketAddress isa = new InetSocketAddress(ici.address(), ici.dataPort());
 
-			return ConnectionInfoLookupResponse.createReceiverFoundAndReady(new RemoteReceiver(isa, edge
-				.getConnectionID()));
+			return ConnectionInfoLookupResponse.createReceiverFoundAndReady(new RemoteReceiver(isa, edge.getConnectionID()));
 		}
 	}
 

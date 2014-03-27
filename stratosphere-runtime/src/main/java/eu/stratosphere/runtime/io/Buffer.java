@@ -14,8 +14,6 @@ package eu.stratosphere.runtime.io;
 
 import eu.stratosphere.core.memory.MemorySegment;
 
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class Buffer {
@@ -25,8 +23,6 @@ public class Buffer {
 	private final BufferRecycler recycler;
 
 	// -----------------------------------------------------------------------------------------------------------------
-
-	private final AtomicBoolean isRecycled;
 
 	private final AtomicInteger referenceCounter;
 
@@ -39,7 +35,6 @@ public class Buffer {
 		this.size = size;
 		this.recycler = recycler;
 
-		this.isRecycled = new AtomicBoolean(false);
 		// we are the first, so we start with reference count of one
 		this.referenceCounter = new AtomicInteger(1);
 	}
@@ -50,11 +45,14 @@ public class Buffer {
 	 * @param toDuplicate Buffer instance to duplicate
 	 */
 	private Buffer(Buffer toDuplicate) {
+		if (toDuplicate.referenceCounter.getAndIncrement() == 0) {
+			throw new IllegalStateException("Buffer was released before duplication.");
+		}
+		
 		this.memorySegment = toDuplicate.memorySegment;
 		this.size = toDuplicate.size;
 		this.recycler = toDuplicate.recycler;
 		this.referenceCounter = toDuplicate.referenceCounter;
-		this.isRecycled = toDuplicate.isRecycled;
 	}
 
 	// -----------------------------------------------------------------------------------------------------------------
@@ -76,22 +74,16 @@ public class Buffer {
 	}
 
 	public void recycleBuffer() {
-		if (this.isRecycled.compareAndSet(false, true)) {
-			if (this.referenceCounter.decrementAndGet() == 0) {
-				this.recycler.recycle(this.memorySegment);
-			}
+		if (this.referenceCounter.decrementAndGet() == 0) {
+			this.recycler.recycle(this.memorySegment);
 		}
 	}
 
 	public Buffer duplicate() {
-		if (this.referenceCounter.getAndIncrement() == 0) {
-			throw new IllegalStateException("Buffer was released before duplication.");
-		}
-
 		return new Buffer(this);
 	}
 
-	public void copyToBuffer(Buffer destinationBuffer) throws IOException {
+	public void copyToBuffer(Buffer destinationBuffer) {
 		if (size() > destinationBuffer.size()) {
 			throw new IllegalArgumentException("Destination buffer is too small to store content of source buffer.");
 		}

@@ -42,5 +42,5 @@ public interface EnvelopeDispatcher {
 	 *
 	 * @param envelope envelope to be sent
 	 */
-	void dispatchFromNetwork(Envelope envelope, boolean freeSourceBuffer) throws IOException, InterruptedException;
+	void dispatchFromNetwork(Envelope envelope) throws IOException, InterruptedException;
 }
