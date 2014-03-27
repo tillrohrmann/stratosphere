@@ -1062,6 +1062,8 @@ public class ExecutionGraph implements ExecutionListener {
 				if (eg.jobHasFailedOrCanceledStatus()) {
 					return InternalJobStatus.CANCELED;
 				}
+			}else if(latestStateChange == ExecutionState.FAILED){
+				return InternalJobStatus.FAILING;
 			}
 			break;
 		case SCHEDULED:
@@ -1071,6 +1073,8 @@ public class ExecutionGraph implements ExecutionListener {
 				if (eg.jobHasFailedOrCanceledStatus()) {
 					return InternalJobStatus.CANCELED;
 				}
+			}else if(latestStateChange == ExecutionState.FAILED){
+				return InternalJobStatus.FAILING;
 			}
 			break;
 		case RUNNING:

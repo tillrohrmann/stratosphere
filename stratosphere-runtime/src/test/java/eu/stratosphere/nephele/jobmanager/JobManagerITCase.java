@@ -463,7 +463,7 @@ public class JobManagerITCase {
 
 		try {
 
-			inputFile = ServerTestUtils.createInputFile(0);
+			inputFile = ServerTestUtils.createInputFile(100);
 			outputFile = new File(ServerTestUtils.getTempDir() + File.separator + ServerTestUtils.getRandomFilename());
 			jarFile = ServerTestUtils.createJarFile(runtimeExceptionClassName);
 
