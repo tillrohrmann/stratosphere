@@ -14,10 +14,12 @@
 package eu.stratosphere.runtime.io.api;
 
 import eu.stratosphere.core.io.IOReadableWritable;
+import eu.stratosphere.nephele.event.task.AbstractEvent;
 import eu.stratosphere.nephele.template.AbstractInputTask;
 import eu.stratosphere.nephele.template.AbstractInvokable;
 import eu.stratosphere.nephele.template.AbstractTask;
 import eu.stratosphere.runtime.io.Buffer;
+import eu.stratosphere.runtime.io.channels.EndOfSuperstepEvent;
 import eu.stratosphere.runtime.io.network.bufferprovider.BufferProvider;
 import eu.stratosphere.runtime.io.serialization.RecordSerializer;
 import eu.stratosphere.runtime.io.serialization.SpanningSerializer;
@@ -110,6 +112,40 @@ public class RecordWriter<T extends IOReadableWritable> extends BufferWriter {
 			}
 
 			serializer.clear();
+		}
+	}
+
+	@Override
+	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
+		for (int targetChannel = 0; targetChannel < this.numChannels; targetChannel++) {
+			RecordSerializer<T> serializer = this.serializers[targetChannel];
+
+			Buffer buffer = serializer.getCurrentBuffer();
+			if (buffer == null) {
+				super.sendEvent(event, targetChannel);
+			} else {
+				super.sendBufferAndEvent(buffer, event, targetChannel);
+
+				buffer = this.bufferPool.requestBufferBlocking(this.bufferPool.getBufferSize());
+				serializer.setNextBuffer(buffer);
+			}
+		}
+	}
+
+	@Override
+	public void sendEndOfSuperstep() throws IOException, InterruptedException {
+		for (int targetChannel = 0; targetChannel < this.numChannels; targetChannel++) {
+			RecordSerializer<T> serializer = this.serializers[targetChannel];
+
+			Buffer buffer = serializer.getCurrentBuffer();
+			if (buffer == null) {
+				super.sendEvent(EndOfSuperstepEvent.INSTANCE, targetChannel);
+			} else {
+				super.sendBufferAndEvent(buffer, EndOfSuperstepEvent.INSTANCE, targetChannel);
+
+				buffer = this.bufferPool.requestBufferBlocking(this.bufferPool.getBufferSize());
+				serializer.setNextBuffer(buffer);
+			}
 		}
 	}
 }

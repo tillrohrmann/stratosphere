@@ -13,6 +13,7 @@
 
 package eu.stratosphere.runtime.io.api;
 
+import eu.stratosphere.nephele.event.task.AbstractEvent;
 import eu.stratosphere.nephele.event.task.AbstractTaskEvent;
 import eu.stratosphere.nephele.event.task.EventListener;
 import eu.stratosphere.runtime.io.channels.EndOfSuperstepEvent;
@@ -34,7 +35,11 @@ public class BufferWriter {
 		this.outputGate.sendBuffer(buffer, targetChannel);
 	}
 
-	public void sendBufferAndEvent(Buffer buffer, AbstractTaskEvent event, int targetChannel) throws IOException, InterruptedException {
+	public void sendEvent(AbstractEvent event, int targetChannel) throws IOException, InterruptedException {
+		this.outputGate.sendEvent(event, targetChannel);
+	}
+
+	public void sendBufferAndEvent(Buffer buffer, AbstractEvent event, int targetChannel) throws IOException, InterruptedException {
 		this.outputGate.sendBufferAndEvent(buffer, event, targetChannel);
 	}
 
@@ -42,7 +47,7 @@ public class BufferWriter {
 		this.outputGate.broadcastBuffer(buffer);
 	}
 
-	public void broadcastEvent(AbstractTaskEvent event) throws IOException, InterruptedException {
+	public void broadcastEvent(AbstractEvent event) throws IOException, InterruptedException {
 		this.outputGate.broadcastEvent(event);
 	}
 

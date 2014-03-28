@@ -50,6 +50,10 @@ public class OutputGate extends Gate<IOReadableWritable> {
 		this.channels[targetChannel].sendBuffer(buffer);
 	}
 
+	public void sendEvent(AbstractEvent event, int targetChannel) throws IOException, InterruptedException {
+		this.channels[targetChannel].sendEvent(event);
+	}
+
 	public void sendBufferAndEvent(Buffer buffer, AbstractEvent event, int targetChannel) throws IOException, InterruptedException {
 		this.channels[targetChannel].sendBufferAndEvent(buffer, event);
 	}
