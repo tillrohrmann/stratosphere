@@ -23,7 +23,7 @@ import eu.stratosphere.runtime.io.network.bufferprovider.BufferAvailabilityListe
 import eu.stratosphere.runtime.io.network.bufferprovider.BufferProvider;
 import eu.stratosphere.runtime.io.network.envelope.Envelope;
 import eu.stratosphere.runtime.io.gates.InputGate;
-import eu.stratosphere.runtime.io.serialization.AdaptiveSpanningDeserializer;
+import eu.stratosphere.runtime.io.serialization.AdaptiveSpanningRecordDeserializer;
 import eu.stratosphere.runtime.io.serialization.RecordDeserializer;
 import eu.stratosphere.runtime.io.serialization.RecordDeserializer.DeserializationResult;
 
@@ -107,7 +107,7 @@ public class InputChannel<T extends IOReadableWritable> extends Channel implemen
 						   final ChannelID connectedChannelID, ChannelType type) {
 		super(channelIndex, channelID, connectedChannelID, type);
 		this.inputGate = inputGate;
-		this.deserializer = new AdaptiveSpanningDeserializer<T>();
+		this.deserializer = new AdaptiveSpanningRecordDeserializer<T>();
 	}
 
 	/**

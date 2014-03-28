@@ -19,7 +19,7 @@ import eu.stratosphere.core.memory.MemorySegment;
 import eu.stratosphere.nephele.execution.Environment;
 import eu.stratosphere.runtime.io.gates.InputChannelResult;
 import eu.stratosphere.runtime.io.gates.RecordAvailabilityListener;
-import eu.stratosphere.runtime.io.serialization.AdaptiveSpanningDeserializer;
+import eu.stratosphere.runtime.io.serialization.AdaptiveSpanningRecordDeserializer;
 import eu.stratosphere.runtime.io.Buffer;
 import eu.stratosphere.runtime.io.channels.ChannelID;
 import eu.stratosphere.runtime.io.gates.GateID;
@@ -196,7 +196,7 @@ public class MockEnvironment implements Environment, BufferProvider, LocalBuffer
 		public MockOutputGate(int index, List<Record> outList) {
 			super(new JobID(), new GateID(), index);
 			this.out = outList;
-			this.deserializer = new AdaptiveSpanningDeserializer<Record>();
+			this.deserializer = new AdaptiveSpanningRecordDeserializer<Record>();
 			this.record = new Record();
 		}
 

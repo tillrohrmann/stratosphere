@@ -29,13 +29,13 @@ import java.nio.ByteOrder;
 /**
  * @param <T> The type of the record to be deserialized.
  */
-public class AdaptiveSpanningDeserializer<T extends IOReadableWritable> implements RecordDeserializer<T> {
+public class AdaptiveSpanningRecordDeserializer<T extends IOReadableWritable> implements RecordDeserializer<T> {
 	
 	private final NonSpanningWrapper nonSpanningWrapper;
 	
 	private final SpanningWrapper spanningWrapper;
 
-	public AdaptiveSpanningDeserializer() {
+	public AdaptiveSpanningRecordDeserializer() {
 		this.nonSpanningWrapper = new NonSpanningWrapper();
 		this.spanningWrapper = new SpanningWrapper();
 	}

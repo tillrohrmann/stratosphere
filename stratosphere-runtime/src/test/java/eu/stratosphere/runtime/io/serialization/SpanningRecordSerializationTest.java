@@ -24,7 +24,7 @@ import org.junit.Test;
 
 import java.util.ArrayDeque;
 
-public class SpanningSerializationTest {
+public class SpanningRecordSerializationTest {
 
 	@Test
 	public void testIntRecordsSpanningMultipleSegments() {
@@ -81,7 +81,7 @@ public class SpanningSerializationTest {
 	// -----------------------------------------------------------------------------------------------------------------
 
 	/**
-	 * Iterates over the provided records and tests whether {@link SpanningSerializer} and {@link AdaptiveSpanningDeserializer}
+	 * Iterates over the provided records and tests whether {@link SpanningRecordSerializer} and {@link AdaptiveSpanningRecordDeserializer}
 	 * interact as expected.
 	 * <p>
 	 * Only a single {@link MemorySegment} will be allocated.
@@ -92,8 +92,8 @@ public class SpanningSerializationTest {
 	private void test (Util.MockRecords records, int segmentSize) throws Exception {
 		final int SERIALIZATION_OVERHEAD = 4; // length encoding
 
-		final RecordSerializer<SerializationTestType> serializer = new SpanningSerializer<SerializationTestType>();
-		final RecordDeserializer<SerializationTestType> deserializer = new AdaptiveSpanningDeserializer<SerializationTestType>();
+		final RecordSerializer<SerializationTestType> serializer = new SpanningRecordSerializer<SerializationTestType>();
+		final RecordDeserializer<SerializationTestType> deserializer = new AdaptiveSpanningRecordDeserializer<SerializationTestType>();
 
 		final Buffer buffer = new Buffer(new MemorySegment(new byte[segmentSize]), segmentSize, null);
 

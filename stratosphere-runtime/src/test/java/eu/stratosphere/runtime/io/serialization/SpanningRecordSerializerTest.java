@@ -27,13 +27,13 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.Random;
 
-public class SpanningSerializerTest {
+public class SpanningRecordSerializerTest {
 
 	@Test
 	public void testHasData() {
 		final int SEGMENT_SIZE = 16;
 
-		final SpanningSerializer<SerializationTestType> serializer = new SpanningSerializer<SerializationTestType>();
+		final SpanningRecordSerializer<SerializationTestType> serializer = new SpanningRecordSerializer<SerializationTestType>();
 		final Buffer buffer = new Buffer(new MemorySegment(new byte[SEGMENT_SIZE]), SEGMENT_SIZE, null);
 		final SerializationTestType randomIntRecord = Util.randomRecord(SerializationTestTypeFactory.INT);
 
@@ -66,7 +66,7 @@ public class SpanningSerializerTest {
 	public void testEmptyRecords() {
 		final int SEGMENT_SIZE = 11;
 
-		final SpanningSerializer<SerializationTestType> serializer = new SpanningSerializer<SerializationTestType>();
+		final SpanningRecordSerializer<SerializationTestType> serializer = new SpanningRecordSerializer<SerializationTestType>();
 		final Buffer buffer = new Buffer(new MemorySegment(new byte[SEGMENT_SIZE]), SEGMENT_SIZE, null);
 
 		try {
@@ -177,7 +177,7 @@ public class SpanningSerializerTest {
 	// -----------------------------------------------------------------------------------------------------------------
 
 	/**
-	 * Iterates over the provided records and tests whether the {@link SpanningSerializer} returns the expected
+	 * Iterates over the provided records and tests whether the {@link SpanningRecordSerializer} returns the expected
 	 * {@link SerializationResult} values.
 	 * <p>
 	 * Only a single {@link MemorySegment} will be allocated.
@@ -188,7 +188,7 @@ public class SpanningSerializerTest {
 	private void test(Util.MockRecords records, int segmentSize) throws Exception {
 		final int SERIALIZATION_OVERHEAD = 4; // length encoding
 
-		final SpanningSerializer<SerializationTestType> serializer = new SpanningSerializer<SerializationTestType>();
+		final SpanningRecordSerializer<SerializationTestType> serializer = new SpanningRecordSerializer<SerializationTestType>();
 		final Buffer buffer = new Buffer(new MemorySegment(new byte[segmentSize]), segmentSize, null);
 
 		// -------------------------------------------------------------------------------------------------------------

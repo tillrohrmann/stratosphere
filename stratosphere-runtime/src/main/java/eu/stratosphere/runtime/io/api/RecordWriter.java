@@ -22,7 +22,7 @@ import eu.stratosphere.runtime.io.Buffer;
 import eu.stratosphere.runtime.io.channels.EndOfSuperstepEvent;
 import eu.stratosphere.runtime.io.network.bufferprovider.BufferProvider;
 import eu.stratosphere.runtime.io.serialization.RecordSerializer;
-import eu.stratosphere.runtime.io.serialization.SpanningSerializer;
+import eu.stratosphere.runtime.io.serialization.SpanningRecordSerializer;
 
 import java.io.IOException;
 
@@ -80,7 +80,7 @@ public class RecordWriter<T extends IOReadableWritable> extends BufferWriter {
 		this.numChannels = this.outputGate.getNumChannels();
 		this.serializers = new RecordSerializer[numChannels];
 		for (int i = 0; i < this.numChannels; i++) {
-			this.serializers[i] = new SpanningSerializer<T>();
+			this.serializers[i] = new SpanningRecordSerializer<T>();
 		}
 	}
 

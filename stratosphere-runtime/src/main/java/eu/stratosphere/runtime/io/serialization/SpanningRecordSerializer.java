@@ -21,7 +21,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public class SpanningSerializer<T extends IOReadableWritable> implements RecordSerializer<T> {
+public class SpanningRecordSerializer<T extends IOReadableWritable> implements RecordSerializer<T> {
 
 	/** Flag to enable/disable checks, if buffer not set/full or pending serialization */
 	private static final boolean CHECKED = true;
@@ -44,7 +44,7 @@ public class SpanningSerializer<T extends IOReadableWritable> implements RecordS
 	/** Limit of current {@link MemorySegment} of target buffer */
 	private int limit;
 
-	public SpanningSerializer() {
+	public SpanningRecordSerializer() {
 		this.serializationBuffer = new DataOutputSerializer(128);
 
 		this.lengthBuffer = ByteBuffer.allocate(4);
