@@ -38,7 +38,7 @@ public class OutputChannel extends Channel {
 
 	private boolean receiverCloseRequested;
 
-	private int seqNum;
+	private int currentSeqNum;
 
 	// -----------------------------------------------------------------------------------------------------------------
 
@@ -168,7 +168,7 @@ public class OutputChannel extends Channel {
 	}
 
 	private Envelope createNextEnvelope() {
-		return new Envelope(this.seqNum++, getJobID(), getID());
+		return new Envelope(this.currentSeqNum++, getJobID(), getID());
 	}
 
 	@Override
