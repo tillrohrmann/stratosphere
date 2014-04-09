@@ -21,6 +21,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
+import eu.stratosphere.nephele.deployment.ChannelDeploymentDescriptor;
+import eu.stratosphere.nephele.deployment.GateDeploymentDescriptor;
 import eu.stratosphere.runtime.io.Buffer;
 import eu.stratosphere.runtime.io.channels.ChannelType;
 import eu.stratosphere.runtime.io.network.bufferprovider.BufferAvailabilityListener;
@@ -55,9 +57,9 @@ public class InputGate<T extends IOReadableWritable> extends Gate<T> implements 
 	private static final Log LOG = LogFactory.getLog(InputGate.class);
 
 	/**
-	 * The list of input channels attached to this input gate.
+	 * The array of input channels attached to this input gate.
 	 */
-	private final ArrayList<InputChannel<T>> channels = new ArrayList<InputChannel<T>>();
+	private InputChannel<T>[] channels;
 
 	/**
 	 * Queue with indices of channels that store at least one available record.
@@ -98,39 +100,18 @@ public class InputGate<T extends IOReadableWritable> extends Gate<T> implements 
 		super(jobID, gateID, index);
 	}
 
-	/**
-	 * Adds a new input channel to the input gate.
-	 * 
-	 * @param inputChannel
-	 *        the input channel to be added.
-	 */
-	private void addInputChannel(InputChannel<T> inputChannel) {
-		// in high DOPs, this can be a serious performance issue, as adding all channels and checking linearly has a
-		// quadratic complexity!
-		if (!this.channels.contains(inputChannel)) {
-			this.channels.add(inputChannel);
+	public void initializeChannels(GateDeploymentDescriptor inputGateDescriptor){
+		channels = new InputChannel[inputGateDescriptor.getNumberOfChannelDescriptors()];
+
+		setChannelType(inputGateDescriptor.getChannelType());
+
+		final int nicdd = inputGateDescriptor.getNumberOfChannelDescriptors();
+
+		for(int i = 0; i < nicdd; i++){
+			final ChannelDeploymentDescriptor cdd = inputGateDescriptor.getChannelDescriptor(i);
+			channels[i] = new InputChannel<T>(this, i, cdd.getInputChannelID(),
+					cdd.getOutputChannelID(), getChannelType());
 		}
-	}
-
-	/**
-	 * Removes the input channel with the given ID from the input gate if it exists.
-	 * 
-	 * @param inputChannelID
-	 *        the ID of the channel to be removed
-	 */
-	public void removeInputChannel(ChannelID inputChannelID) {
-
-		for (int i = 0; i < this.channels.size(); i++) {
-
-			final InputChannel<T> inputChannel = this.channels.get(i);
-			if (inputChannel.getID().equals(inputChannelID)) {
-				this.channels.remove(i);
-				return;
-			}
-		}
-		
-		if (LOG.isDebugEnabled())
-			LOG.debug("Cannot find output channel with ID " + inputChannelID + " to remove");
 	}
 
 	@Override
@@ -144,7 +125,7 @@ public class InputGate<T extends IOReadableWritable> extends Gate<T> implements 
 	 * @return the number of input channels associated with this input gate
 	 */
 	public int getNumberOfInputChannels() {
-		return this.channels.size();
+		return this.channels.length;
 	}
 
 	/**
@@ -155,53 +136,11 @@ public class InputGate<T extends IOReadableWritable> extends Gate<T> implements 
 	 * @return the channel from the given position or <code>null</code> if such position does not exist.
 	 */
 	public InputChannel<T> getInputChannel(int pos) {
-		return this.channels.get(pos);
+		return this.channels[pos];
 	}
 
-	public List<InputChannel<T>> channels() {
+	public InputChannel<T>[] channels() {
 		return this.channels;
-	}
-
-
-	/**
-	 * Creates a new network input channel and assigns it to the given input gate.
-	 *
-	 * @param inputGate
-	 *        the input gate the channel shall be assigned to
-	 * @param channelID
-	 *        the ID of the channel
-	 * @param connectedChannelID
-	 *        the ID of the channel this channel is connected to
-	 * @return the new network input channel
-	 */
-	public InputChannel<T> createNetworkInputChannel(final InputGate<T> inputGate, final ChannelID channelID,
-			final ChannelID connectedChannelID) {
-
-		final InputChannel<T> enic = new InputChannel<T>(inputGate, this.channels.size(), channelID, connectedChannelID, ChannelType.NETWORK);
-		addInputChannel(enic);
-
-		return enic;
-	}
-
-
-	/**
-	 * Creates a new in-memory input channel and assigns it to the given input gate.
-	 *
-	 * @param inputGate
-	 *        the input gate the channel shall be assigned to
-	 * @param channelID
-	 *        the ID of the channel
-	 * @param connectedChannelID
-	 *        the ID of the channel this channel is connected to
-	 * @return the new in-memory input channel
-	 */
-	public InputChannel<T> createInMemoryInputChannel(final InputGate<T> inputGate, final ChannelID channelID,
-			final ChannelID connectedChannelID) {
-
-		final InputChannel<T> eimic = new InputChannel<T>(inputGate, this.channels.size(), channelID, connectedChannelID, ChannelType.IN_MEMORY);
-		addInputChannel(eimic);
-
-		return eimic;
 	}
 
 	/**
@@ -308,7 +247,7 @@ public class InputGate<T extends IOReadableWritable> extends Gate<T> implements 
 		}
 
 		for (int i = 0; i < this.getNumberOfInputChannels(); i++) {
-			final InputChannel<T> inputChannel = this.channels.get(i);
+			final InputChannel<T> inputChannel = this.channels[i];
 			if (!inputChannel.isClosed()) {
 				return false;
 			}
@@ -333,7 +272,7 @@ public class InputGate<T extends IOReadableWritable> extends Gate<T> implements 
 	public void close() throws IOException, InterruptedException {
 
 		for (int i = 0; i < this.getNumberOfInputChannels(); i++) {
-			final InputChannel<T> inputChannel = this.channels.get(i);
+			final InputChannel<T> inputChannel = this.channels[i];
 			inputChannel.close();
 		}
 
@@ -350,9 +289,8 @@ public class InputGate<T extends IOReadableWritable> extends Gate<T> implements 
 	public void publishEvent(AbstractEvent event) throws IOException, InterruptedException {
 
 		// Copy event to all connected channels
-		final Iterator<InputChannel<T>> it = this.channels.iterator();
-		while (it.hasNext()) {
-			it.next().transferEvent(event);
+		for(int i=0; i< getNumberOfChannels(); i++){
+			channels[i].transferEvent(event);
 		}
 	}
 
@@ -360,9 +298,8 @@ public class InputGate<T extends IOReadableWritable> extends Gate<T> implements 
 	@Override
 	public void releaseAllChannelResources() {
 
-		final Iterator<InputChannel<T>> it = this.channels.iterator();
-		while (it.hasNext()) {
-			it.next().releaseAllResources();
+		for(int i=0; i< getNumberOfChannels(); i++){
+			channels[i].releaseAllResources();
 		}
 	}
 
