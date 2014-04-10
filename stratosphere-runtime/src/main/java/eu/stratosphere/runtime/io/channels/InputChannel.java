@@ -168,8 +168,7 @@ public class InputChannel<T extends IOReadableWritable> extends Channel implemen
 			BufferOrEvent boe = getNextBufferOrEvent();
 
 			if (boe == null) {
-//				return InputChannelResult.NONE;
-				throw new IllegalStateException("Input channel was queried for data even though none was announced available.");
+				throw new IllegalStateException("Input channel was queries for data even though none was announced available.");
 			}
 
 			// handle events
@@ -346,18 +345,9 @@ public class InputChannel<T extends IOReadableWritable> extends Channel implemen
 					buffer.recycleBuffer();
 				}
 			} else {
-				this.lastReceivedEnvelope = sequenceNumber;
 
-				// Discard envelopes with neither buffer nor events attached
-				//
-				// => Serialization in RecordWriter might result in sending of empty buffers (e.g. writer
-				// sends out a full buffer, requests a new one, and then gets flushed), which results in an
-				// envelope with neither buffer nor event attached
-				if (envelope.getBuffer() == null && envelope.getEventsSerialized() == null) {
-					return;
-				}
-				
 				this.queuedEnvelopes.add(envelope);
+				this.lastReceivedEnvelope = sequenceNumber;
 
 				// Notify the channel about the new data. notify as much as there is (buffer plus once per event)
 				if (envelope.getBuffer() != null) {
@@ -490,7 +480,7 @@ public class InputChannel<T extends IOReadableWritable> extends Channel implemen
 		}
 		else {
 			// no buffer and no events, this should be an error
-			throw new IOException("Received an envelope (seq num " + nextEnvelope.getSequenceNumber() + ") with neither data nor events.");
+			throw new IOException("Received an envelope with neither data nor events.");
 		}
 	}
 
