@@ -63,7 +63,12 @@ public class OutputChannel extends Channel {
 
 	public void sendBuffer(Buffer buffer) throws IOException, InterruptedException {
 		checkStatus();
-		
+
+		// discard empty buffers
+		if (buffer.size() == 0) {
+			return;
+		}
+
 		Envelope envelope = createNextEnvelope();
 		envelope.setBuffer(buffer);
 		this.envelopeDispatcher.dispatchFromOutputChannel(envelope);
