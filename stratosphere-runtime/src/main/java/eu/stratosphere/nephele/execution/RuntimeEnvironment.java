@@ -161,43 +161,6 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 	private LocalBufferPool outputBufferPool;
 
 	/**
-	 * Creates a new runtime environment object which contains the runtime information for the encapsulated Nephele
-	 * task.
-	 * 
-	 * @param jobID
-	 *        the ID of the original Nephele job
-	 * @param taskName
-	 *        the name of task running in this environment
-	 * @param invokableClass
-	 *        invokableClass the class that should be instantiated as a Nephele task
-	 * @param taskConfiguration
-	 *        the configuration object which was attached to the original JobVertex
-	 * @param jobConfiguration
-	 *        the configuration object which was attached to the original {@link JobGraph}
-	 * @throws Exception
-	 *         thrown if an error occurs while instantiating the invokable class
-	 */
-	public RuntimeEnvironment(final JobID jobID, final String taskName,
-			final Class<? extends AbstractInvokable> invokableClass, final Configuration taskConfiguration,
-			final Configuration jobConfiguration) throws Exception {
-
-		this.jobID = jobID;
-		this.taskName = taskName;
-		this.invokableClass = invokableClass;
-		this.taskConfiguration = taskConfiguration;
-		this.jobConfiguration = jobConfiguration;
-		this.indexInSubtaskGroup = 0;
-		this.currentNumberOfSubtasks = 0;
-		this.memoryManager = null;
-		this.ioManager = null;
-		this.inputSplitProvider = null;
-
-		this.invokable = this.invokableClass.newInstance();
-		this.invokable.setEnvironment(this);
-		this.invokable.registerInputOutput();
-	}
-
-	/**
 	 * Constructs a runtime environment from a task deployment description.
 	 * 
 	 * @param tdd
@@ -239,28 +202,10 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 			this.outputGates.get(i).initializeChannels(tdd.getOutputGateDescriptor(i));
 		}
 
-		final int noigdd = tdd.getNumberOfInputGateDescriptors();
-		for (int i = 0; i < noigdd; ++i) {
-			final GateDeploymentDescriptor gdd = tdd.getInputGateDescriptor(i);
-			final InputGate ig = this.inputGates.get(i);
-			final ChannelType channelType = gdd.getChannelType();
-			ig.setChannelType(channelType);
+		int numInputGates = tdd.getNumberOfInputGateDescriptors();
 
-			final int nicdd = gdd.getNumberOfChannelDescriptors();
-			for (int j = 0; j < nicdd; ++j) {
-
-				final ChannelDeploymentDescriptor cdd = gdd.getChannelDescriptor(j);
-				switch (channelType) {
-				case NETWORK:
-					ig.createNetworkInputChannel(ig, cdd.getInputChannelID(), cdd.getOutputChannelID());
-					break;
-				case IN_MEMORY:
-					ig.createInMemoryInputChannel(ig, cdd.getInputChannelID(), cdd.getOutputChannelID());
-					break;
-				default:
-					throw new IllegalStateException("Unknown channel type");
-				}
-			}
+		for(int i = 0; i < numInputGates; i++){
+			this.inputGates.get(i).initializeChannels(tdd.getInputGateDescriptor(i));
 		}
 	}
 

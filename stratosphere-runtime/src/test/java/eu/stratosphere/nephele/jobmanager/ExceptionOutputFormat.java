@@ -11,31 +11,43 @@
  * specific language governing permissions and limitations under the License.
  **********************************************************************************************************************/
 
-package eu.stratosphere.nephele.executiongraph;
+package eu.stratosphere.nephele.jobmanager;
 
-import eu.stratosphere.core.io.StringRecord;
-import eu.stratosphere.runtime.io.api.RecordWriter;
-import eu.stratosphere.nephele.template.AbstractFileInputTask;
+import eu.stratosphere.api.common.io.OutputFormat;
+import eu.stratosphere.configuration.Configuration;
 
-/**
- * This class represents the data source in the self cross unit test.
- * 
- */
-public class SelfCrossInputTask extends AbstractFileInputTask {
+import java.io.IOException;
 
 
-	@Override
-	public void registerInputOutput() {
-
-		new RecordWriter<StringRecord>(this);
-		new RecordWriter<StringRecord>(this);
-	}
+public class ExceptionOutputFormat implements OutputFormat<Object> {
+	/**
+	 * The message which is used for the test runtime exception.
+	 */
+	public static final String RUNTIME_EXCEPTION_MESSAGE = "This is a test runtime exception";
 
 
 	@Override
-	public void invoke() throws Exception {
+	public void configure(Configuration parameters) {
 
-		// Nothing to do here
 	}
 
+	@Override
+	public void open(int taskNumber, int numTasks) throws IOException {
+
+	}
+
+	@Override
+	public void writeRecord(Object record) throws IOException {
+
+	}
+
+	@Override
+	public void close() throws IOException {
+
+	}
+
+	@Override
+	public void initialize(Configuration configuration) {
+		throw new RuntimeException(RUNTIME_EXCEPTION_MESSAGE);
+	}
 }

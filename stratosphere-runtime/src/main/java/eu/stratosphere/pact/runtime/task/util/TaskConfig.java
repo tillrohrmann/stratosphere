@@ -256,6 +256,10 @@ public class TaskConfig {
 	public String getTaskName() {
 		return this.config.getString(TASK_NAME, null);
 	}
+
+	public boolean hasStubWrapper() {
+		return this.config.containsKey(STUB_OBJECT);
+	}
 	
 	
 	public void setStubWrapper(UserCodeWrapper<?> wrapper) {

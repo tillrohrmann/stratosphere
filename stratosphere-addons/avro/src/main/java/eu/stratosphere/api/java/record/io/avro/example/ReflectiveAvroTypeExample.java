@@ -152,6 +152,11 @@ public class ReflectiveAvroTypeExample {
 		
 		@Override
 		public void close() throws IOException {}
+
+		@Override
+		public void initialize(Configuration configuration){}
 	}
+
+
 
 }

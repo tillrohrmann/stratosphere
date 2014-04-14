@@ -28,11 +28,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
+import eu.stratosphere.api.common.io.OutputFormat;
+import eu.stratosphere.nephele.jobgraph.*;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import eu.stratosphere.configuration.Configuration;
-import eu.stratosphere.configuration.IllegalConfigurationException;
 import eu.stratosphere.core.io.InputSplit;
 import eu.stratosphere.nephele.execution.ExecutionListener;
 import eu.stratosphere.nephele.execution.ExecutionState;
@@ -40,18 +41,10 @@ import eu.stratosphere.nephele.instance.AllocatedResource;
 import eu.stratosphere.nephele.instance.DummyInstance;
 import eu.stratosphere.nephele.instance.InstanceManager;
 import eu.stratosphere.nephele.instance.InstanceType;
-import eu.stratosphere.nephele.jobgraph.DistributionPattern;
 import eu.stratosphere.runtime.io.gates.GateID;
 import eu.stratosphere.runtime.io.channels.ChannelID;
 import eu.stratosphere.runtime.io.channels.ChannelType;
-import eu.stratosphere.nephele.jobgraph.AbstractJobInputVertex;
-import eu.stratosphere.nephele.jobgraph.AbstractJobVertex;
-import eu.stratosphere.nephele.jobgraph.JobEdge;
-import eu.stratosphere.nephele.jobgraph.JobFileOutputVertex;
-import eu.stratosphere.nephele.jobgraph.JobGraph;
-import eu.stratosphere.nephele.jobgraph.JobID;
 import eu.stratosphere.nephele.taskmanager.ExecutorThreadFactory;
-import eu.stratosphere.nephele.template.AbstractInputTask;
 import eu.stratosphere.nephele.template.AbstractInvokable;
 import eu.stratosphere.util.StringUtils;
 
@@ -397,17 +390,6 @@ public class ExecutionGraph implements ExecutionListener {
 			final ExecutionVertex sev = entry.getValue();
 			final ExecutionGroupVertex sgv = sev.getGroupVertex();
 
-			// First compare number of output gates
-			if (sjv.getNumberOfForwardConnections() != sgv.getEnvironment().getNumberOfOutputGates()) {
-				throw new GraphConversionException("Job and execution vertex " + sjv.getName()
-					+ " have different number of outputs");
-			}
-
-			if (sjv.getNumberOfBackwardConnections() != sgv.getEnvironment().getNumberOfInputGates()) {
-				throw new GraphConversionException("Job and execution vertex " + sjv.getName()
-					+ " have different number of inputs");
-			}
-
 			// First, build the group edges
 			for (int i = 0; i < sjv.getNumberOfForwardConnections(); ++i) {
 				final JobEdge edge = sjv.getForwardConnection(i);
@@ -497,62 +479,19 @@ public class ExecutionGraph implements ExecutionListener {
 			throw new GraphConversionException(StringUtils.stringifyException(t));
 		}
 
-		// Run the configuration check the user has provided for the vertex
-		try {
-			jobVertex.checkConfiguration(groupVertex.getEnvironment().getInvokable());
-		} catch (IllegalConfigurationException e) {
-			throw new GraphConversionException(StringUtils.stringifyException(e));
-		}
-
-		// Check if the user's specifications for the number of subtasks are valid
-		final int minimumNumberOfSubtasks = jobVertex.getMinimumNumberOfSubtasks(groupVertex.getEnvironment()
-			.getInvokable());
-		final int maximumNumberOfSubtasks = jobVertex.getMaximumNumberOfSubtasks(groupVertex.getEnvironment()
-			.getInvokable());
-		if (jobVertex.getNumberOfSubtasks() != -1) {
-			if (jobVertex.getNumberOfSubtasks() < 1) {
-				throw new GraphConversionException("Cannot split task " + jobVertex.getName() + " into "
-					+ jobVertex.getNumberOfSubtasks() + " subtasks");
-			}
-
-			if (jobVertex.getNumberOfSubtasks() < minimumNumberOfSubtasks) {
-				throw new GraphConversionException("Number of subtasks must be at least " + minimumNumberOfSubtasks);
-			}
-
-			if (maximumNumberOfSubtasks != -1) {
-				if (jobVertex.getNumberOfSubtasks() > maximumNumberOfSubtasks) {
-					throw new GraphConversionException("Number of subtasks for vertex " + jobVertex.getName()
-						+ " can be at most " + maximumNumberOfSubtasks);
-				}
-			}
-		}
-
-		// Check number of subtasks per instance
-		if (jobVertex.getNumberOfSubtasksPerInstance() != -1 && jobVertex.getNumberOfSubtasksPerInstance() < 1) {
-			throw new GraphConversionException("Cannot set number of subtasks per instance to "
-				+ jobVertex.getNumberOfSubtasksPerInstance() + " for vertex " + jobVertex.getName());
-		}
-
-		// Assign min/max to the group vertex (settings are actually applied in applyUserDefinedSettings)
-		groupVertex.setMinMemberSize(minimumNumberOfSubtasks);
-		groupVertex.setMaxMemberSize(maximumNumberOfSubtasks);
-
 		// Register input and output vertices separately
 		if (jobVertex instanceof AbstractJobInputVertex) {
 
 			final InputSplit[] inputSplits;
+			final AbstractJobInputVertex jobInputVertex = (AbstractJobInputVertex) jobVertex;
 
-			// let the task code compute the input splits
-			if (groupVertex.getEnvironment().getInvokable() instanceof AbstractInputTask) {
-				try {
-					inputSplits = ((AbstractInputTask<?>) groupVertex.getEnvironment().getInvokable())
-						.computeInputSplits(jobVertex.getNumberOfSubtasks());
-				} catch (Exception e) {
-					throw new GraphConversionException("Cannot compute input splits for " + groupVertex.getName()
-						+ ": " + StringUtils.stringifyException(e));
-				}
-			} else {
-				throw new GraphConversionException("JobInputVertex contained a task class which was not an input task.");
+			final Class<? extends InputSplit> inputSplitType = jobInputVertex.getInputSplitType();
+
+			try{
+				inputSplits = jobInputVertex.getInputSplits(jobVertex.getNumberOfSubtasks());
+			}catch(Exception e) {
+				throw new GraphConversionException("Cannot compute input splits for " + groupVertex.getName() + ": "
+						+ StringUtils.stringifyException(e));
 			}
 
 			if (inputSplits == null) {
@@ -562,13 +501,20 @@ public class ExecutionGraph implements ExecutionListener {
 					+ " input splits");
 			}
 
-			// assign input splits
+			// assign input splits and type
 			groupVertex.setInputSplits(inputSplits);
+			groupVertex.setInputSplitType(inputSplitType);
 		}
-		// TODO: This is a quick workaround, problem can be solved in a more generic way
-		if (jobVertex instanceof JobFileOutputVertex) {
-			final JobFileOutputVertex jbov = (JobFileOutputVertex) jobVertex;
-			jobVertex.getConfiguration().setString("outputPath", jbov.getFilePath().toString());
+
+		if(jobVertex instanceof JobOutputVertex){
+			final JobOutputVertex jobOutputVertex = (JobOutputVertex) jobVertex;
+
+			final OutputFormat<?> outputFormat = jobOutputVertex.getOutputFormat();
+
+			//Call initialize method only if the vertex has  an output format specified
+			if(outputFormat != null){
+				outputFormat.initialize(groupVertex.getConfiguration());
+			}
 		}
 
 		// Add group vertex to initial execution stage
@@ -1108,6 +1054,10 @@ public class ExecutionGraph implements ExecutionListener {
 					return InternalJobStatus.CANCELED;
 				}
 			}
+			// Allow failing also if the job is in the created state
+			else if(latestStateChange == ExecutionState.FAILED){
+				return InternalJobStatus.FAILING;
+			}
 			break;
 		case SCHEDULED:
 			if (latestStateChange == ExecutionState.RUNNING) {
@@ -1116,6 +1066,10 @@ public class ExecutionGraph implements ExecutionListener {
 				if (eg.jobHasFailedOrCanceledStatus()) {
 					return InternalJobStatus.CANCELED;
 				}
+			}
+			// Allow failing also if the job is in the scheduled state
+			else if(latestStateChange == ExecutionState.FAILED){
+				return InternalJobStatus.FAILING;
 			}
 			break;
 		case RUNNING:

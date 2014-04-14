@@ -13,26 +13,33 @@
 
 package eu.stratosphere.nephele.jobmanager;
 
+import eu.stratosphere.api.java.record.io.CsvOutputFormat;
+import eu.stratosphere.api.java.record.io.TextInputFormat;
 import eu.stratosphere.configuration.ConfigConstants;
 import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.configuration.GlobalConfiguration;
 import eu.stratosphere.core.fs.Path;
 import eu.stratosphere.nephele.client.JobClient;
 import eu.stratosphere.nephele.client.JobExecutionException;
-import eu.stratosphere.nephele.jobgraph.DistributionPattern;
-import eu.stratosphere.runtime.io.channels.ChannelType;
-import eu.stratosphere.nephele.jobgraph.JobFileInputVertex;
-import eu.stratosphere.nephele.jobgraph.JobFileOutputVertex;
+import eu.stratosphere.nephele.template.AbstractInputTask;
 import eu.stratosphere.nephele.jobgraph.JobGraph;
 import eu.stratosphere.nephele.jobgraph.JobGraphDefinitionException;
+import eu.stratosphere.nephele.jobgraph.JobInputVertex;
 import eu.stratosphere.nephele.jobgraph.JobTaskVertex;
+import eu.stratosphere.nephele.jobgraph.JobOutputVertex;
+import eu.stratosphere.nephele.jobgraph.DistributionPattern;
+import eu.stratosphere.pact.runtime.plugable.pactrecord.RecordSerializerFactory;
+import eu.stratosphere.pact.runtime.shipping.ShipStrategyType;
+import eu.stratosphere.pact.runtime.task.DataSinkTask;
+import eu.stratosphere.pact.runtime.task.DataSourceTask;
+import eu.stratosphere.pact.runtime.task.util.TaskConfig;
+import eu.stratosphere.runtime.io.channels.ChannelType;
 import eu.stratosphere.nephele.jobmanager.JobManager.ExecutionMode;
 import eu.stratosphere.nephele.taskmanager.Task;
 import eu.stratosphere.nephele.taskmanager.TaskManager;
-import eu.stratosphere.nephele.util.FileLineReader;
-import eu.stratosphere.nephele.util.FileLineWriter;
 import eu.stratosphere.nephele.util.JarFileCreator;
 import eu.stratosphere.nephele.util.ServerTestUtils;
+import eu.stratosphere.types.StringValue;
 import eu.stratosphere.util.StringUtils;
 import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Level;
@@ -239,9 +246,15 @@ public class JobManagerITCase {
 			final JobGraph jg = new JobGraph("Job Graph 1");
 
 			// input vertex
-			final JobFileInputVertex i1 = new JobFileInputVertex("Input 1", jg);
-			i1.setFileInputClass(FileLineReader.class);
-			i1.setFilePath(new Path(new File(testDirectory).toURI()));
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
+			i1.setInputClass((Class<AbstractInputTask<?>>) (Class<?>) DataSourceTask.class);
+			i1.setNumberOfSubtasks(1);
+			TextInputFormat inputFormat = new TextInputFormat();
+			inputFormat.setFilePath(new Path(new File(testDirectory).toURI()));
+			i1.setInputFormat(inputFormat);
+			i1.setOutputSerializer(RecordSerializerFactory.get());
+			TaskConfig config= new TaskConfig(i1.getConfiguration());
+			config.addOutputShipStrategy(ShipStrategyType.FORWARD);
 
 			// task vertex 1
 			final JobTaskVertex t1 = new JobTaskVertex("Task 1", jg);
@@ -252,9 +265,15 @@ public class JobManagerITCase {
 			t2.setTaskClass(ForwardTask.class);
 
 			// output vertex
-			JobFileOutputVertex o1 = new JobFileOutputVertex("Output 1", jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(outputFile.toURI()));
+			JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
+			o1.setNumberOfSubtasks(1);
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat(StringValue.class);
+			outputFormat.setOutputFilePath(new Path(outputFile.toURI()));
+			o1.setOutputFormat(outputFormat);
+			TaskConfig outputConfig = new TaskConfig(o1.getConfiguration());
+			outputConfig.addInputToGroup(0);
+			outputConfig.setInputSerializer(RecordSerializerFactory.get(), 0);
 
 			t1.setVertexToShareInstancesWith(i1);
 			t2.setVertexToShareInstancesWith(i1);
@@ -347,18 +366,32 @@ public class JobManagerITCase {
 			final JobGraph jg = new JobGraph("Job Graph for Exception Test");
 
 			// input vertex
-			final JobFileInputVertex i1 = new JobFileInputVertex("Input 1", jg);
-			i1.setFileInputClass(FileLineReader.class);
-			i1.setFilePath(new Path(inputFile.toURI()));
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
+			i1.setNumberOfSubtasks(1);
+			Class<AbstractInputTask<?>> clazz = (Class<AbstractInputTask<?>>)(Class<?>)
+					DataSourceTask.class;
+			i1.setInputClass(clazz);
+			TextInputFormat inputFormat = new TextInputFormat();
+			inputFormat.setFilePath(new Path(inputFile.toURI()));
+			i1.setInputFormat(inputFormat);
+			i1.setOutputSerializer(RecordSerializerFactory.get());
+			TaskConfig config= new TaskConfig(i1.getConfiguration());
+			config.addOutputShipStrategy(ShipStrategyType.FORWARD);
 
 			// task vertex 1
 			final JobTaskVertex t1 = new JobTaskVertex("Task with Exception", jg);
 			t1.setTaskClass(ExceptionTask.class);
 
 			// output vertex
-			JobFileOutputVertex o1 = new JobFileOutputVertex("Output 1", jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(outputFile.toURI()));
+			JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
+			o1.setNumberOfSubtasks(1);
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat(StringValue.class);
+			outputFormat.setOutputFilePath(new Path(outputFile.toURI()));
+			o1.setOutputFormat(outputFormat);
+			TaskConfig outputConfig = new TaskConfig(o1.getConfiguration());
+			outputConfig.addInputToGroup(0);
+			outputConfig.setInputSerializer(RecordSerializerFactory.get(), 0);
 
 			t1.setVertexToShareInstancesWith(i1);
 			o1.setVertexToShareInstancesWith(i1);
@@ -435,7 +468,7 @@ public class JobManagerITCase {
 
 		try {
 
-			inputFile = ServerTestUtils.createInputFile(0);
+			inputFile = ServerTestUtils.createInputFile(100);
 			outputFile = new File(ServerTestUtils.getTempDir() + File.separator + ServerTestUtils.getRandomFilename());
 			jarFile = ServerTestUtils.createJarFile(runtimeExceptionClassName);
 
@@ -443,18 +476,33 @@ public class JobManagerITCase {
 			final JobGraph jg = new JobGraph("Job Graph for Exception Test");
 
 			// input vertex
-			final JobFileInputVertex i1 = new JobFileInputVertex("Input 1", jg);
-			i1.setFileInputClass(FileLineReader.class);
-			i1.setFilePath(new Path(inputFile.toURI()));
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
+			i1.setNumberOfSubtasks(1);
+			Class<AbstractInputTask<?>> clazz = (Class<AbstractInputTask<?>>)(Class<?>)DataSourceTask
+					.class;
+			i1.setInputClass(clazz);
+			TextInputFormat inputFormat = new TextInputFormat();
+			inputFormat.setFilePath(new Path(inputFile.toURI()));
+			i1.setInputFormat(inputFormat);
+			i1.setInputFormat(inputFormat);
+			i1.setOutputSerializer(RecordSerializerFactory.get());
+			TaskConfig config= new TaskConfig(i1.getConfiguration());
+			config.addOutputShipStrategy(ShipStrategyType.FORWARD);
 
 			// task vertex 1
 			final JobTaskVertex t1 = new JobTaskVertex("Task with Exception", jg);
 			t1.setTaskClass(RuntimeExceptionTask.class);
 
 			// output vertex
-			JobFileOutputVertex o1 = new JobFileOutputVertex("Output 1", jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(outputFile.toURI()));
+			JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
+			o1.setNumberOfSubtasks(1);
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat(StringValue.class);
+			outputFormat.setOutputFilePath(new Path(outputFile.toURI()));
+			o1.setOutputFormat(outputFormat);
+			TaskConfig outputConfig = new TaskConfig(o1.getConfiguration());
+			outputConfig.addInputToGroup(0);
+			outputConfig.setInputSerializer(RecordSerializerFactory.get(), 0);
 
 			t1.setVertexToShareInstancesWith(i1);
 			o1.setVertexToShareInstancesWith(i1);
@@ -483,7 +531,120 @@ public class JobManagerITCase {
 					fail("JobExecutionException does not contain an error message");
 				}
 				if (!e.getMessage().contains(RuntimeExceptionTask.RUNTIME_EXCEPTION_MESSAGE)) {
-					fail("JobExecutionException does not contain the expected error message");
+					fail("JobExecutionException does not contain the expected error message, " +
+							"but instead: " + e.getMessage());
+				}
+
+				// Check if the correct error message is encapsulated in the exception
+				return;
+			}
+			finally {
+				jcLogger.setLevel(jcLevel);
+			}
+
+			fail("Expected exception but did not receive it");
+
+		} catch (JobGraphDefinitionException jgde) {
+			fail(jgde.getMessage());
+		} catch (IOException ioe) {
+			fail(ioe.getMessage());
+		} finally {
+
+			// Remove temporary files
+			if (inputFile != null) {
+				inputFile.delete();
+			}
+			if (outputFile != null) {
+				outputFile.delete();
+			}
+			if (jarFile != null) {
+				jarFile.delete();
+			}
+
+			if (jobClient != null) {
+				jobClient.close();
+			}
+		}
+	}
+
+	/**
+	 * Tests the Nephele execution when a runtime exception in the output format occurs.
+	 */
+	@Test
+	public void testExecutionWithRuntimeExceptionInOutputFormat() {
+
+		final String runtimeExceptionClassName = RuntimeExceptionTask.class.getSimpleName();
+		File inputFile = null;
+		File outputFile = null;
+		File jarFile = null;
+		JobClient jobClient = null;
+
+		try {
+
+			inputFile = ServerTestUtils.createInputFile(100);
+			outputFile = new File(ServerTestUtils.getTempDir() + File.separator + ServerTestUtils.getRandomFilename());
+			jarFile = ServerTestUtils.createJarFile(runtimeExceptionClassName);
+
+			// Create job graph
+			final JobGraph jg = new JobGraph("Job Graph for Exception Test");
+
+			// input vertex
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
+			i1.setNumberOfSubtasks(1);
+			Class<AbstractInputTask<?>> clazz = (Class<AbstractInputTask<?>>)(Class<?>)DataSourceTask
+					.class;
+			i1.setInputClass(clazz);
+			TextInputFormat inputFormat = new TextInputFormat();
+			inputFormat.setFilePath(new Path(inputFile.toURI()));
+			i1.setInputFormat(inputFormat);
+			i1.setInputFormat(inputFormat);
+			i1.setOutputSerializer(RecordSerializerFactory.get());
+			TaskConfig config= new TaskConfig(i1.getConfiguration());
+			config.addOutputShipStrategy(ShipStrategyType.FORWARD);
+
+			// task vertex 1
+			final JobTaskVertex t1 = new JobTaskVertex("Task with Exception", jg);
+			t1.setTaskClass(ForwardTask.class);
+
+			// output vertex
+			JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
+			o1.setNumberOfSubtasks(1);
+			o1.setOutputClass(DataSinkTask.class);
+			ExceptionOutputFormat outputFormat = new ExceptionOutputFormat();
+			o1.setOutputFormat(outputFormat);
+			TaskConfig outputConfig = new TaskConfig(o1.getConfiguration());
+			outputConfig.addInputToGroup(0);
+			outputConfig.setInputSerializer(RecordSerializerFactory.get(), 0);
+
+			t1.setVertexToShareInstancesWith(i1);
+			o1.setVertexToShareInstancesWith(i1);
+
+			// connect vertices
+			i1.connectTo(t1, ChannelType.IN_MEMORY);
+			t1.connectTo(o1, ChannelType.IN_MEMORY);
+
+			// add jar
+			jg.addJar(new Path(new File(ServerTestUtils.getTempDir() + File.separator + runtimeExceptionClassName
+					+ ".jar").toURI()));
+
+			// Create job client and launch job
+			jobClient = new JobClient(jg, configuration);
+
+			// deactivate logging of expected test exceptions
+			Logger jcLogger = Logger.getLogger(JobClient.class);
+			Level jcLevel = jcLogger.getEffectiveLevel();
+			jcLogger.setLevel(Level.OFF);
+			try {
+				jobClient.submitJobAndWait();
+			} catch (JobExecutionException e) {
+
+				// Check if the correct error message is encapsulated in the exception
+				if (e.getMessage() == null) {
+					fail("JobExecutionException does not contain an error message");
+				}
+				if (!e.getMessage().contains(RuntimeExceptionTask.RUNTIME_EXCEPTION_MESSAGE)) {
+					fail("JobExecutionException does not contain the expected error message, " +
+							"but instead: " + e.getMessage());
 				}
 
 				// Check if the correct error message is encapsulated in the exception
@@ -546,9 +707,17 @@ public class JobManagerITCase {
 			final JobGraph jg = new JobGraph("Job Graph 1");
 
 			// input vertex
-			final JobFileInputVertex i1 = new JobFileInputVertex("Input 1", jg);
-			i1.setFileInputClass(FileLineReader.class);
-			i1.setFilePath(new Path(inputFile.toURI()));
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
+			i1.setNumberOfSubtasks(1);
+			Class<AbstractInputTask<?>> clazz = (Class<AbstractInputTask<?>>)(Class<?>)DataSourceTask
+					.class;
+			i1.setInputClass(clazz);
+			TextInputFormat inputFormat = new TextInputFormat();
+			inputFormat.setFilePath(new Path(inputFile.toURI()));
+			i1.setInputFormat(inputFormat);
+			i1.setOutputSerializer(RecordSerializerFactory.get());
+			TaskConfig config= new TaskConfig(i1.getConfiguration());
+			config.addOutputShipStrategy(ShipStrategyType.FORWARD);
 
 			// task vertex 1
 			final JobTaskVertex t1 = new JobTaskVertex("Task 1", jg);
@@ -559,9 +728,16 @@ public class JobManagerITCase {
 			t2.setTaskClass(ForwardTask.class);
 
 			// output vertex
-			JobFileOutputVertex o1 = new JobFileOutputVertex("Output 1", jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(outputFile.toURI()));
+			JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
+			o1.setNumberOfSubtasks(1);
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat(StringValue.class);
+			outputFormat.setOutputFilePath(new Path(outputFile.toURI()));
+			o1.setOutputFormat(outputFormat);
+			TaskConfig outputConfig = new TaskConfig(o1.getConfiguration());
+			outputConfig.addInputToGroup(0);
+			outputConfig.setInputSerializer(RecordSerializerFactory.get(),0);
+
 
 			t1.setVertexToShareInstancesWith(i1);
 			t2.setVertexToShareInstancesWith(i1);
@@ -636,7 +812,6 @@ public class JobManagerITCase {
 
 			// Create required jar file
 			JarFileCreator jfc = new JarFileCreator(jarFile);
-			jfc.addClass(DoubleSourceTask.class);
 			jfc.addClass(DoubleTargetTask.class);
 			jfc.createJarFile();
 
@@ -644,18 +819,35 @@ public class JobManagerITCase {
 			final JobGraph jg = new JobGraph("Job Graph for Double Connection Test");
 
 			// input vertex
-			final JobFileInputVertex i1 = new JobFileInputVertex("Input with two Outputs", jg);
-			i1.setFileInputClass(DoubleSourceTask.class);
-			i1.setFilePath(new Path(inputFile.toURI()));
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
+			i1.setNumberOfSubtasks(1);
+			Class<AbstractInputTask<?>> clazz = (Class<AbstractInputTask<?>>)(Class<?>)DataSourceTask
+					.class;
+			i1.setInputClass(clazz);
+			TextInputFormat inputFormat = new TextInputFormat();
+			inputFormat.setFilePath(new Path(inputFile.toURI()));
+			i1.setInputFormat(inputFormat);
+			i1.setOutputSerializer(RecordSerializerFactory.get());
+			TaskConfig config= new TaskConfig(i1.getConfiguration());
+			config.addOutputShipStrategy(ShipStrategyType.FORWARD);
+			config.addOutputShipStrategy(ShipStrategyType.BROADCAST);
+
 
 			// task vertex 1
 			final JobTaskVertex t1 = new JobTaskVertex("Task with two Inputs", jg);
 			t1.setTaskClass(DoubleTargetTask.class);
 
 			// output vertex
-			JobFileOutputVertex o1 = new JobFileOutputVertex("Output 1", jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(outputFile.toURI()));
+			JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
+			o1.setNumberOfSubtasks(1);
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat(StringValue.class);
+			outputFormat.setOutputFilePath(new Path(outputFile.toURI()));
+			o1.setOutputFormat(outputFormat);
+			TaskConfig outputConfig = new TaskConfig(o1.getConfiguration());
+			outputConfig.addInputToGroup(0);
+			outputConfig.setInputSerializer(RecordSerializerFactory.get(), 0);
+
 
 			t1.setVertexToShareInstancesWith(i1);
 			o1.setVertexToShareInstancesWith(i1);
@@ -705,7 +897,6 @@ public class JobManagerITCase {
 
 		File inputFile = null;
 		File outputFile = null;
-		File jarFile = new File(ServerTestUtils.getTempDir() + File.separator + "emptyNames.jar");
 		JobClient jobClient = null;
 
 		try {
@@ -713,32 +904,37 @@ public class JobManagerITCase {
 			inputFile = ServerTestUtils.createInputFile(0);
 			outputFile = new File(ServerTestUtils.getTempDir() + File.separator + ServerTestUtils.getRandomFilename());
 
-			// Create required jar file
-			JarFileCreator jfc = new JarFileCreator(jarFile);
-			jfc.addClass(DoubleSourceTask.class);
-			jfc.addClass(DoubleTargetTask.class);
-			jfc.createJarFile();
-
 			// Create job graph
 			final JobGraph jg = new JobGraph();
 
 			// input vertex
-			final JobFileInputVertex i1 = new JobFileInputVertex(jg);
-			i1.setFileInputClass(FileLineReader.class);
-			i1.setFilePath(new Path(inputFile.toURI()));
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
+			i1.setNumberOfSubtasks(1);
+			Class<AbstractInputTask<?>> clazz = (Class<AbstractInputTask<?>>)(Class<?>)DataSourceTask
+					.class;
+			i1.setInputClass(clazz);
+			TextInputFormat inputFormat = new TextInputFormat();
+			inputFormat.setFilePath(new Path(inputFile.toURI()));
+			i1.setInputFormat(inputFormat);
+			i1.setOutputSerializer(RecordSerializerFactory.get());
+			TaskConfig config= new TaskConfig(i1.getConfiguration());
+			config.addOutputShipStrategy(ShipStrategyType.FORWARD);
 
 			// output vertex
-			JobFileOutputVertex o1 = new JobFileOutputVertex(jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(outputFile.toURI()));
+			JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
+			o1.setNumberOfSubtasks(1);
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat(StringValue.class);
+			outputFormat.setOutputFilePath(new Path(outputFile.toURI()));
+			o1.setOutputFormat(outputFormat);
+			TaskConfig outputConfig = new TaskConfig(o1.getConfiguration());
+			outputConfig.addInputToGroup(0);
+			outputConfig.setInputSerializer(RecordSerializerFactory.get(), 0);
 
 			o1.setVertexToShareInstancesWith(i1);
 
 			// connect vertices
 			i1.connectTo(o1, ChannelType.IN_MEMORY);
-
-			// add jar
-			jg.addJar(new Path(jarFile.toURI()));
 
 			// Create job client and launch job
 			jobClient = new JobClient(jg, configuration);
@@ -758,9 +954,6 @@ public class JobManagerITCase {
 			}
 			if (outputFile != null) {
 				outputFile.delete();
-			}
-			if (jarFile != null) {
-				jarFile.delete();
 			}
 
 			if (jobClient != null) {
@@ -805,24 +998,44 @@ public class JobManagerITCase {
 			// Create job graph
 			final JobGraph jg = new JobGraph("Union job " + limit);
 
-			// input vertex 1
-			final JobFileInputVertex i1 = new JobFileInputVertex("Input 1", jg);
-			i1.setFileInputClass(FileLineReader.class);
-			i1.setFilePath(new Path(inputFile1.toURI()));
+			// input vertex
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
+			i1.setNumberOfSubtasks(1);
+			Class<AbstractInputTask<?>> clazz = (Class<AbstractInputTask<?>>)(Class<?>)DataSourceTask
+					.class;
+			i1.setInputClass(clazz);
+			TextInputFormat inputFormat1 = new TextInputFormat();
+			inputFormat1.setFilePath(new Path(inputFile1.toURI()));
+			i1.setInputFormat(inputFormat1);
+			i1.setOutputSerializer(RecordSerializerFactory.get());
+			TaskConfig config1= new TaskConfig(i1.getConfiguration());
+			config1.addOutputShipStrategy(ShipStrategyType.FORWARD);
 
-			// input vertex 2
-			final JobFileInputVertex i2 = new JobFileInputVertex("Input 2", jg);
-			i2.setFileInputClass(FileLineReader.class);
-			i2.setFilePath(new Path(inputFile2.toURI()));
+			// input vertex
+			final JobInputVertex i2 = new JobInputVertex("Input 2", jg);
+			i2.setNumberOfSubtasks(1);
+			i2.setInputClass(clazz);
+			TextInputFormat inputFormat2 = new TextInputFormat();
+			inputFormat2.setFilePath(new Path(inputFile2.toURI()));
+			i2.setInputFormat(inputFormat2);
+			i2.setOutputSerializer(RecordSerializerFactory.get());
+			TaskConfig config2 = new TaskConfig(i2.getConfiguration());
+			config2.addOutputShipStrategy(ShipStrategyType.FORWARD);
 
 			// union task
 			final JobTaskVertex u1 = new JobTaskVertex("Union", jg);
 			u1.setTaskClass(UnionTask.class);
 
 			// output vertex
-			JobFileOutputVertex o1 = new JobFileOutputVertex("Output", jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(outputFile.toURI()));
+			JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
+			o1.setNumberOfSubtasks(1);
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat(StringValue.class);
+			outputFormat.setOutputFilePath(new Path(outputFile.toURI()));
+			o1.setOutputFormat(outputFormat);
+			TaskConfig outputConfig = new TaskConfig(o1.getConfiguration());
+			outputConfig.addInputToGroup(0);
+			outputConfig.setInputSerializer(RecordSerializerFactory.get(),0);
 
 			i1.setVertexToShareInstancesWith(o1);
 			i2.setVertexToShareInstancesWith(o1);
@@ -948,19 +1161,31 @@ public class JobManagerITCase {
 			// Create job graph
 			final JobGraph jg = new JobGraph("Job with large DoP (" + numberOfSubtasks + ")");
 
-			// input vertex 1
-			final JobFileInputVertex i1 = new JobFileInputVertex("Input 1", jg);
-			i1.setFileInputClass(FileLineReader.class);
-			i1.setFilePath(new Path(inputFile1.toURI()));
+			// input vertex
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
+			Class<AbstractInputTask<?>> clazz = (Class<AbstractInputTask<?>>)(Class<?>)DataSourceTask
+					.class;
+			i1.setInputClass(clazz);
+			TextInputFormat inputFormat1 = new TextInputFormat();
+			inputFormat1.setFilePath(new Path(inputFile1.toURI()));
+			i1.setInputFormat(inputFormat1);
 			i1.setNumberOfSubtasks(numberOfSubtasks);
 			i1.setNumberOfSubtasksPerInstance(numberOfSubtasks);
+			i1.setOutputSerializer(RecordSerializerFactory.get());
+			TaskConfig config= new TaskConfig(i1.getConfiguration());
+			config.addOutputShipStrategy(ShipStrategyType.PARTITION_HASH);
 
-			// input vertex 2
-			final JobFileInputVertex i2 = new JobFileInputVertex("Input 2", jg);
-			i2.setFileInputClass(FileLineReader.class);
-			i2.setFilePath(new Path(inputFile2.toURI()));
+			// input vertex
+			final JobInputVertex i2 = new JobInputVertex("Input 2", jg);
+			i2.setInputClass(clazz);
+			TextInputFormat inputFormat2 = new TextInputFormat();
+			inputFormat2.setFilePath(new Path(inputFile2.toURI()));
+			i2.setInputFormat(inputFormat2);
 			i2.setNumberOfSubtasks(numberOfSubtasks);
 			i2.setNumberOfSubtasksPerInstance(numberOfSubtasks);
+			i2.setOutputSerializer(RecordSerializerFactory.get());
+			TaskConfig config2 = new TaskConfig(i2.getConfiguration());
+			config2.addOutputShipStrategy(ShipStrategyType.PARTITION_HASH);
 
 			// union task
 			final JobTaskVertex f1 = new JobTaskVertex("Forward 1", jg);
@@ -969,11 +1194,16 @@ public class JobManagerITCase {
 			f1.setNumberOfSubtasksPerInstance(numberOfSubtasks);
 
 			// output vertex
-			JobFileOutputVertex o1 = new JobFileOutputVertex("Output", jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(outputFile.toURI()));
+			JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat(StringValue.class);
+			outputFormat.setOutputFilePath(new Path(outputFile.toURI()));
+			o1.setOutputFormat(outputFormat);
 			o1.setNumberOfSubtasks(numberOfSubtasks);
 			o1.setNumberOfSubtasksPerInstance(numberOfSubtasks);
+			TaskConfig outputConfig = new TaskConfig(o1.getConfiguration());
+			outputConfig.addInputToGroup(0);
+			outputConfig.setInputSerializer(RecordSerializerFactory.get(),0);
 
 			i1.setVertexToShareInstancesWith(o1);
 			i2.setVertexToShareInstancesWith(o1);

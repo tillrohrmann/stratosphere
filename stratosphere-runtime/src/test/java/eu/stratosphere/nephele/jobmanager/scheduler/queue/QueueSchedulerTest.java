@@ -20,7 +20,14 @@ import static org.junit.Assert.fail;
 import java.io.IOException;
 import java.util.List;
 
+import eu.stratosphere.api.common.io.GenericInputFormat;
+import eu.stratosphere.api.common.io.OutputFormat;
+import eu.stratosphere.configuration.Configuration;
+import eu.stratosphere.core.io.GenericInputSplit;
+import eu.stratosphere.nephele.jobgraph.*;
+import eu.stratosphere.nephele.template.AbstractInputTask;
 import eu.stratosphere.runtime.io.api.RecordWriter;
+import eu.stratosphere.types.IntValue;
 import org.junit.Test;
 
 import eu.stratosphere.core.io.StringRecord;
@@ -32,12 +39,7 @@ import eu.stratosphere.nephele.executiongraph.GraphConversionException;
 import eu.stratosphere.nephele.instance.InstanceManager;
 import eu.stratosphere.runtime.io.api.RecordReader;
 import eu.stratosphere.runtime.io.channels.ChannelType;
-import eu.stratosphere.nephele.jobgraph.JobGraph;
-import eu.stratosphere.nephele.jobgraph.JobGraphDefinitionException;
-import eu.stratosphere.nephele.jobgraph.JobInputVertex;
-import eu.stratosphere.nephele.jobgraph.JobOutputVertex;
 import eu.stratosphere.nephele.jobmanager.scheduler.SchedulingException;
-import eu.stratosphere.nephele.template.AbstractGenericInputTask;
 import eu.stratosphere.nephele.template.AbstractOutputTask;
 import eu.stratosphere.util.StringUtils;
 
@@ -50,7 +52,7 @@ public class QueueSchedulerTest {
 	 * Test input task.
 	 * 
 	 */
-	public static final class InputTask extends AbstractGenericInputTask {
+	public static final class InputTask extends AbstractInputTask<GenericInputSplit> {
 
 		/**
 		 * {@inheritDoc}
@@ -94,6 +96,47 @@ public class QueueSchedulerTest {
 
 	}
 
+	public static final class DummyInputFormat extends GenericInputFormat<IntValue> {
+
+		@Override
+		public boolean reachedEnd() throws IOException {
+			return true;
+		}
+
+		@Override
+		public IntValue nextRecord(IntValue reuse) throws IOException {
+			return null;
+		}
+	}
+
+	public static final class DummyOutputFormat implements OutputFormat<IntValue> {
+
+		@Override
+		public void configure(Configuration parameters) {
+
+		}
+
+		@Override
+		public void open(int taskNumber, int numTasks) throws IOException {
+
+		}
+
+		@Override
+		public void writeRecord(IntValue record) throws IOException {
+
+		}
+
+		@Override
+		public void close() throws IOException {
+
+		}
+
+		@Override
+		public void initialize(Configuration configuration) {
+
+		}
+	}
+
 	/**
 	 * Constructs a sample execution graph consisting of two vertices connected by a channel of the given type.
 	 * 
@@ -109,10 +152,12 @@ public class QueueSchedulerTest {
 
 		final JobInputVertex inputVertex = new JobInputVertex("Input 1", jobGraph);
 		inputVertex.setInputClass(InputTask.class);
+		inputVertex.setInputFormat(new DummyInputFormat());
 		inputVertex.setNumberOfSubtasks(1);
 
 		final JobOutputVertex outputVertex = new JobOutputVertex("Output 1", jobGraph);
 		outputVertex.setOutputClass(OutputTask.class);
+		outputVertex.setOutputFormat(new DummyOutputFormat());
 		outputVertex.setNumberOfSubtasks(1);
 
 		try {
@@ -139,7 +184,7 @@ public class QueueSchedulerTest {
 	 * channel.
 	 */
 	@Test
-	public void testSchedulJobWithInMemoryChannel() {
+	public void testScheduleJobWithInMemoryChannel() {
 
 		final TestInstanceManager tim = new TestInstanceManager();
 		final TestDeploymentManager tdm = new TestDeploymentManager();

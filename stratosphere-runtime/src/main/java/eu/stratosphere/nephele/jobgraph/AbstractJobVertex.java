@@ -661,68 +661,6 @@ public abstract class AbstractJobVertex implements IOReadableWritable {
 	}
 
 	/**
-	 * Performs task specific checks if the
-	 * respective task has been configured properly.
-	 * 
-	 * @param invokable
-	 *        an instance of the task this vertex represents
-	 * @throws IllegalConfigurationException
-	 *         thrown if the respective tasks is not configured properly
-	 */
-	public void checkConfiguration(final AbstractInvokable invokable) throws IllegalConfigurationException {
-
-		if (invokable == null) {
-			throw new IllegalArgumentException("Argument invokable is null");
-		}
-
-		// see if the task itself has a valid configuration
-		// because this is user code running on the master, we embed it in a catch-all block
-		try {
-			invokable.checkConfiguration();
-		} catch (IllegalConfigurationException icex) {
-			throw icex; // simply forward
-		} catch (Throwable t) {
-			throw new IllegalConfigurationException("Checking the invokable's configuration caused an error: "
-				+ StringUtils.stringifyException(t));
-		}
-	}
-
-	/**
-	 * Returns the minimum number of subtasks the respective task
-	 * must be split into at runtime.
-	 * 
-	 * @param invokable
-	 *        an instance of the task this vertex represents
-	 * @return the minimum number of subtasks the respective task must be split into at runtime
-	 */
-	public int getMinimumNumberOfSubtasks(final AbstractInvokable invokable) {
-
-		if (invokable == null) {
-			throw new IllegalArgumentException("Argument invokable is null");
-		}
-
-		return invokable.getMinimumNumberOfSubtasks();
-	}
-
-	/**
-	 * Returns the maximum number of subtasks the respective task
-	 * can be split into at runtime.
-	 * 
-	 * @param invokable
-	 *        an instance of the task this vertex represents
-	 * @return the maximum number of subtasks the respective task can be split into at runtime, <code>-1</code> for
-	 *         infinity
-	 */
-	public int getMaximumNumberOfSubtasks(final AbstractInvokable invokable) {
-
-		if (invokable == null) {
-			throw new IllegalArgumentException("Argument invokable is null");
-		}
-
-		return invokable.getMaximumNumberOfSubtasks();
-	}
-
-	/**
 	 * Returns the invokable class which represents the task of this vertex
 	 * 
 	 * @return the invokable class, <code>null</code> if it is not set

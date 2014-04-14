@@ -79,5 +79,13 @@ public interface OutputFormat<IT> extends Serializable {
 	 * @throws IOException Thrown, if the input could not be closed properly.
 	 */
 	void close() throws IOException;
+
+	/**
+	 * Method which is called on the JobManager node prior to execution. It can be used to set up output format
+	 * related tasks.
+	 *
+	 * @param configuration The task configuration
+	 */
+	void initialize(Configuration configuration);
 }
 

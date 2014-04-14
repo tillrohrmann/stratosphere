@@ -92,6 +92,11 @@ public class JobGraph implements IOReadableWritable {
 	private static final int BUFFERSIZE = 8192;
 
 	/**
+	 * Buffer for array of reachable job vertices
+	 */
+	private volatile AbstractJobVertex[] bufferedAllReachableJobVertices = null;
+
+	/**
 	 * Constructs a new job graph with a random job ID.
 	 */
 	public JobGraph() {
@@ -253,14 +258,51 @@ public class JobGraph implements IOReadableWritable {
 
 	/**
 	 * Returns an array of all job vertices than can be reached when traversing the job graph from the input vertices.
+	 * Each job vertex is contained only one time.
 	 * 
 	 * @return an array of all job vertices than can be reached when traversing the job graph from the input vertices
 	 */
 	public AbstractJobVertex[] getAllReachableJobVertices() {
+		if(bufferedAllReachableJobVertices == null){
+			final List<AbstractJobVertex> collector = new ArrayList<AbstractJobVertex>();
+			final HashSet<JobVertexID> visited = new HashSet<JobVertexID>();
 
-		final Vector<AbstractJobVertex> collector = new Vector<AbstractJobVertex>();
-		collectVertices(null, collector);
-		return collector.toArray(new AbstractJobVertex[0]);
+			final Iterator<AbstractJobInputVertex> inputs = getInputVertices();
+
+			while(inputs.hasNext()){
+				AbstractJobVertex vertex = inputs.next();
+
+				if(!visited.contains(vertex.getID())){
+					collectVertices(vertex, visited, collector);
+				}
+			}
+
+			bufferedAllReachableJobVertices = collector.toArray(new AbstractJobVertex[0]);
+		}
+
+		return bufferedAllReachableJobVertices;
+	}
+
+	/**
+	 * Auxiliary method to collect all vertices which are reachable from the input vertices.
+	 *
+	 * @param jv
+	 *        the currently considered job vertex
+	 * @param collector
+	 *        a temporary list to store the vertices that have already been visisted
+	 */
+	private void collectVertices(final AbstractJobVertex jv, final HashSet<JobVertexID> visited, final
+			List<AbstractJobVertex> collector) {
+		visited.add(jv.getID());
+		collector.add(jv);
+
+		for(int i =0; i < jv.getNumberOfForwardConnections(); i++){
+			AbstractJobVertex vertex = jv.getForwardConnection(i).getConnectedVertex();
+
+			if(!visited.contains(vertex.getID())){
+				collectVertices(vertex, visited, collector);
+			}
+		}
 	}
 
 	/**
@@ -293,34 +335,6 @@ public class JobGraph implements IOReadableWritable {
 		return vertices;
 	}
 
-	/**
-	 * Auxiliary method to collect all vertices which are reachable from the input vertices.
-	 * 
-	 * @param jv
-	 *        the currently considered job vertex
-	 * @param collector
-	 *        a temporary list to store the vertices that have already been visisted
-	 */
-	private void collectVertices(final AbstractJobVertex jv, final List<AbstractJobVertex> collector) {
-
-		if (jv == null) {
-			final Iterator<AbstractJobInputVertex> iter = getInputVertices();
-			while (iter.hasNext()) {
-				collectVertices(iter.next(), collector);
-			}
-		} else {
-
-			if (!collector.contains(jv)) {
-				collector.add(jv);
-			} else {
-				return;
-			}
-
-			for (int i = 0; i < jv.getNumberOfForwardConnections(); i++) {
-				collectVertices(jv.getForwardConnection(i).getConnectedVertex(), collector);
-			}
-		}
-	}
 
 	/**
 	 * Returns the ID of the job.
@@ -356,31 +370,6 @@ public class JobGraph implements IOReadableWritable {
 	}
 
 	/**
-	 * Checks if the job vertex with the given ID is registered with the job graph.
-	 * 
-	 * @param id
-	 *        the ID of the vertex to search for
-	 * @return <code>true</code> if a vertex with the given ID is registered with the job graph, <code>false</code>
-	 *         otherwise.
-	 */
-	private boolean includedInJobGraph(final JobVertexID id) {
-
-		if (this.inputVertices.containsKey(id)) {
-			return true;
-		}
-
-		if (this.outputVertices.containsKey(id)) {
-			return true;
-		}
-
-		if (this.taskVertices.containsKey(id)) {
-			return true;
-		}
-
-		return false;
-	}
-
-	/**
 	 * Checks if the job graph is weakly connected.
 	 * 
 	 * @return <code>true</code> if the job graph is weakly connected, otherwise <code>false</code>
@@ -395,25 +384,6 @@ public class JobGraph implements IOReadableWritable {
 			return false;
 		}
 
-		final HashMap<JobVertexID, AbstractJobVertex> tmp = new HashMap<JobVertexID, AbstractJobVertex>();
-		for (int i = 0; i < reachable.length; i++) {
-			tmp.put(reachable[i].getID(), reachable[i]);
-		}
-
-		// Check if all is subset of reachable
-		for (int i = 0; i < all.length; i++) {
-			if (!tmp.containsKey(all[i].getID())) {
-				return false;
-			}
-		}
-
-		// Check if reachable is a subset of all
-		for (int i = 0; i < reachable.length; i++) {
-			if (!includedInJobGraph(reachable[i].getID())) {
-				return false;
-			}
-		}
-
 		return true;
 	}
 
@@ -424,18 +394,14 @@ public class JobGraph implements IOReadableWritable {
 	 */
 	public boolean isAcyclic() {
 
-		// Tarjan's algorithm to detect strongly connected componenent of a graph
 		final AbstractJobVertex[] reachable = getAllReachableJobVertices();
-		final HashMap<AbstractJobVertex, Integer> indexMap = new HashMap<AbstractJobVertex, Integer>();
-		final HashMap<AbstractJobVertex, Integer> lowLinkMap = new HashMap<AbstractJobVertex, Integer>();
-		final Stack<AbstractJobVertex> stack = new Stack<AbstractJobVertex>();
-		final Integer index = Integer.valueOf(0);
 
-		for (int i = 0; i < reachable.length; i++) {
-			if (!indexMap.containsKey(reachable[i])) {
-				if (!tarjan(reachable[i], index, indexMap, lowLinkMap, stack)) {
-					return false;
-				}
+		final HashSet<JobVertexID> temporarilyMarked = new HashSet<JobVertexID>();
+		final HashSet<JobVertexID> permanentlyMarked = new HashSet<JobVertexID>();
+
+		for(int i = 0; i < reachable.length; i++){
+			if(detectCycle(reachable[i], temporarilyMarked, permanentlyMarked)){
+				return false;
 			}
 		}
 
@@ -443,51 +409,35 @@ public class JobGraph implements IOReadableWritable {
 	}
 
 	/**
-	 * Auxiliary method implementing Tarjan's algorithm for strongly-connected components to determine whether the job
-	 * graph is acyclic.
+	 * Auxiliary method for cycle detection. Performs a depth-first traversal with vertex markings to detect a cycle.
+	 * If a node with a temporary marking is found, then there is a cycle. Once all children of a vertex have been
+	 * traversed the parent node cannot be part of another cycle and is thus permanently marked.
+	 *
+	 * @param jv current job vertex to check
+	 * @param temporarilyMarked set of temporarily marked nodes
+	 * @param permanentlyMarked set of permanently marked nodes
+	 * @return <code>true</code> if there is a cycle, <code>false</code> otherwise
 	 */
-	private boolean tarjan(final AbstractJobVertex jv, Integer index,
-			final HashMap<AbstractJobVertex, Integer> indexMap, final HashMap<AbstractJobVertex, Integer> lowLinkMap,
-			final Stack<AbstractJobVertex> stack) {
+	private boolean detectCycle(final AbstractJobVertex jv, final HashSet<JobVertexID> temporarilyMarked,
+								final HashSet<JobVertexID> permanentlyMarked){
+		JobVertexID vertexID = jv.getID();
 
-		indexMap.put(jv, Integer.valueOf(index));
-		lowLinkMap.put(jv, Integer.valueOf(index));
-		index = Integer.valueOf(index.intValue() + 1);
-		stack.push(jv);
+		if(permanentlyMarked.contains(vertexID)){
+			return false;
+		}else if(temporarilyMarked.contains(vertexID)){
+			return true;
+		}else{
+			temporarilyMarked.add(vertexID);
 
-		for (int i = 0; i < jv.getNumberOfForwardConnections(); i++) {
-
-			final AbstractJobVertex jv2 = jv.getForwardConnection(i).getConnectedVertex();
-			if (!indexMap.containsKey(jv2) || stack.contains(jv2)) {
-				if (!indexMap.containsKey(jv2)) {
-					if (!tarjan(jv2, index, indexMap, lowLinkMap, stack)) {
-						return false;
-					}
-				}
-				if (lowLinkMap.get(jv) > lowLinkMap.get(jv2)) {
-					lowLinkMap.put(jv, Integer.valueOf(lowLinkMap.get(jv2)));
+			for(int i = 0; i < jv.getNumberOfForwardConnections(); i++){
+				if(detectCycle(jv.getForwardConnection(i).getConnectedVertex(), temporarilyMarked, permanentlyMarked)){
+					return true;
 				}
 			}
+
+			permanentlyMarked.add(vertexID);
+			return false;
 		}
-
-		if (lowLinkMap.get(jv).equals(indexMap.get(jv))) {
-
-			int count = 0;
-			while (stack.size() > 0) {
-				final AbstractJobVertex jv2 = stack.pop();
-				if (jv == jv2) {
-					break;
-				}
-
-				count++;
-			}
-
-			if (count > 0) {
-				return false;
-			}
-		}
-
-		return true;
 	}
 
 	/**

@@ -26,6 +26,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import eu.stratosphere.api.java.record.io.CsvOutputFormat;
+import eu.stratosphere.api.java.record.io.TextInputFormat;
+import eu.stratosphere.nephele.jobgraph.*;
+import eu.stratosphere.nephele.template.AbstractInputTask;
+import eu.stratosphere.pact.runtime.task.DataSinkTask;
+import eu.stratosphere.pact.runtime.task.DataSourceTask;
 import org.apache.log4j.Level;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -45,16 +51,7 @@ import eu.stratosphere.nephele.instance.InstanceRequestMap;
 import eu.stratosphere.nephele.instance.InstanceType;
 import eu.stratosphere.nephele.instance.InstanceTypeDescription;
 import eu.stratosphere.nephele.instance.InstanceTypeFactory;
-import eu.stratosphere.nephele.jobgraph.DistributionPattern;
 import eu.stratosphere.runtime.io.channels.ChannelType;
-import eu.stratosphere.nephele.util.FileLineReader;
-import eu.stratosphere.nephele.util.FileLineWriter;
-import eu.stratosphere.nephele.jobgraph.JobFileInputVertex;
-import eu.stratosphere.nephele.jobgraph.JobFileOutputVertex;
-import eu.stratosphere.nephele.jobgraph.JobGraph;
-import eu.stratosphere.nephele.jobgraph.JobGraphDefinitionException;
-import eu.stratosphere.nephele.jobgraph.JobID;
-import eu.stratosphere.nephele.jobgraph.JobTaskVertex;
 import eu.stratosphere.nephele.topology.NetworkTopology;
 import eu.stratosphere.nephele.util.ServerTestUtils;
 import eu.stratosphere.util.LogUtils;
@@ -236,19 +233,25 @@ public class ExecutionGraphTest {
 			final JobGraph jg = new JobGraph("Job Graph 1");
 			jobID = jg.getJobID();
 
-			// input vertex
-			final JobFileInputVertex i1 = new JobFileInputVertex("Input 1", jg);
-			i1.setFileInputClass(FileLineReader.class);
-			i1.setFilePath(new Path(inputFile.toURI()));
+			//input vertex
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
+			i1.setNumberOfSubtasks(1);
+			i1.setInputClass((Class<AbstractInputTask<?>>) (Class<?>) DataSourceTask.class);
+			TextInputFormat inputFormat = new TextInputFormat();
+			inputFormat.setFilePath(new Path(inputFile.toURI()));
+			i1.setInputFormat(inputFormat);
 
 			// task vertex
 			final JobTaskVertex t1 = new JobTaskVertex("Task 1", jg);
 			t1.setTaskClass(ForwardTask1Input1Output.class);
 
 			// output vertex
-			final JobFileOutputVertex o1 = new JobFileOutputVertex("Output 1", jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(new File(ServerTestUtils.getRandomFilename()).toURI()));
+			final JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
+			o1.setNumberOfSubtasks(1);
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat();
+			outputFormat.setOutputFilePath(new Path(new File(ServerTestUtils.getRandomFilename()).toURI()));
+			o1.setOutputFormat(outputFormat);
 
 			o1.setVertexToShareInstancesWith(i1);
 			i1.setVertexToShareInstancesWith(t1);
@@ -332,14 +335,12 @@ public class ExecutionGraphTest {
 			assertNotNull(egv0.getGroupMember(0));
 			assertNull(egv0.getGroupMember(1));
 			assertEquals(1, egv0.getInputSplits().length);
-			assertEquals(-1, egv0.getMaximumNumberOfGroupMembers());
-			assertEquals(1, egv0.getMinimumNumberOfGroupMember());
 			assertEquals("Input 1", egv0.getName());
 			assertEquals(0, egv0.getNumberOfBackwardLinks());
 			assertEquals(1, egv0.getNumberOfForwardLinks());
 			assertEquals(1, egv0.getNumberOfSubtasksPerInstance());
 			assertEquals(0, egv0.getStageNumber());
-			assertEquals(-1, egv0.getUserDefinedNumberOfMembers());
+			assertEquals(1, egv0.getUserDefinedNumberOfMembers());
 			assertEquals(INSTANCE_MANAGER.getDefaultInstanceType(), egv0.getInstanceType());
 			assertEquals("Task 1", egv0.getVertexToShareInstancesWith().getName());
 
@@ -354,14 +355,12 @@ public class ExecutionGraphTest {
 			assertNull(egv1.getForwardEdge(0));
 			assertNotNull(egv1.getGroupMember(0));
 			assertNull(egv1.getGroupMember(1));
-			assertEquals(1, egv1.getMaximumNumberOfGroupMembers());
-			assertEquals(1, egv1.getMinimumNumberOfGroupMember());
 			assertEquals("Output 1", egv1.getName());
 			assertEquals(1, egv1.getNumberOfBackwardLinks());
 			assertEquals(0, egv1.getNumberOfForwardLinks());
 			assertEquals(1, egv1.getNumberOfSubtasksPerInstance());
 			assertEquals(0, egv1.getStageNumber());
-			assertEquals(-1, egv1.getUserDefinedNumberOfMembers());
+			assertEquals(1, egv1.getUserDefinedNumberOfMembers());
 			assertEquals(INSTANCE_MANAGER.getInstanceTypeByName(DEFAULT_INSTANCE_TYPE_NAME), egv1.getInstanceType());
 			assertEquals("Input 1", egv1.getVertexToShareInstancesWith().getName());
 
@@ -378,8 +377,6 @@ public class ExecutionGraphTest {
 			assertNotNull(egv2.getForwardEdges(egv1));
 			assertNotNull(egv2.getGroupMember(0));
 			assertNull(egv2.getGroupMember(1));
-			assertEquals(-1, egv2.getMaximumNumberOfGroupMembers());
-			assertEquals(1, egv2.getMinimumNumberOfGroupMember());
 			assertEquals("Task 1", egv2.getName());
 			assertEquals(1, egv2.getNumberOfBackwardLinks());
 			assertEquals(1, egv2.getNumberOfForwardLinks());
@@ -399,24 +396,24 @@ public class ExecutionGraphTest {
 			assertNotNull(ev0.getID());
 			assertEquals("Input 1", ev0.getName());
 			assertEquals(INSTANCE_MANAGER.getInstanceTypeByName(DEFAULT_INSTANCE_TYPE_NAME), ev0.getAllocatedResource()
-				.getInstance()
-				.getType());
+					.getInstance()
+					.getType());
 
 			// ev1 (output1)
 			assertEquals(egv1, ev1.getGroupVertex());
 			assertNotNull(ev1.getID());
 			assertEquals("Output 1", ev1.getName());
 			assertEquals(INSTANCE_MANAGER.getInstanceTypeByName(DEFAULT_INSTANCE_TYPE_NAME), ev1.getAllocatedResource()
-				.getInstance()
-				.getType());
+					.getInstance()
+					.getType());
 
 			// ev2 (task1)
 			assertEquals(egv2, ev2.getGroupVertex());
 			assertNotNull(ev2.getID());
 			assertEquals("Task 1", ev2.getName());
 			assertEquals(INSTANCE_MANAGER.getInstanceTypeByName(DEFAULT_INSTANCE_TYPE_NAME), ev2.getAllocatedResource()
-				.getInstance()
-				.getType());
+					.getInstance()
+					.getType());
 
 			assertEquals(ev0.getAllocatedResource(), ev1.getAllocatedResource());
 			assertEquals(ev0.getAllocatedResource(), ev2.getAllocatedResource());
@@ -463,19 +460,25 @@ public class ExecutionGraphTest {
 			final JobGraph jg = new JobGraph("Job Graph 1");
 			jobID = jg.getJobID();
 
-			// input vertex
-			final JobFileInputVertex i1 = new JobFileInputVertex("Input 1", jg);
-			i1.setFileInputClass(FileLineReader.class);
-			i1.setFilePath(new Path(inputFile.toURI()));
+			//input vertex
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
+			i1.setNumberOfSubtasks(1);
+			i1.setInputClass((Class<AbstractInputTask<?>>) (Class<?>) DataSourceTask.class);
+			TextInputFormat inputFormat = new TextInputFormat();
+			inputFormat.setFilePath(new Path(inputFile.toURI()));
+			i1.setInputFormat(inputFormat);
 
 			// task vertex
 			final JobTaskVertex t1 = new JobTaskVertex("Task 1", jg);
 			t1.setTaskClass(ForwardTask1Input1Output.class);
 
 			// output vertex
-			final JobFileOutputVertex o1 = new JobFileOutputVertex("Output 1", jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(new File(ServerTestUtils.getRandomFilename()).toURI()));
+			final JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
+			o1.setNumberOfSubtasks(1);
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat();
+			outputFormat.setOutputFilePath(new Path(new File(ServerTestUtils.getRandomFilename()).toURI()));
+			o1.setOutputFormat(outputFormat);
 
 			// connect vertices
 			i1.connectTo(t1, ChannelType.IN_MEMORY);
@@ -576,15 +579,20 @@ public class ExecutionGraphTest {
 			final JobGraph jg = new JobGraph("Job Graph 1");
 			jobID = jg.getJobID();
 
-			// input vertex
-			final JobFileInputVertex i1 = new JobFileInputVertex("Input 1", jg);
-			i1.setFileInputClass(FileLineReader.class);
-			i1.setFilePath(new Path(inputFile1.toURI()));
+			//input vertex
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
 			i1.setNumberOfSubtasks(2);
-			final JobFileInputVertex i2 = new JobFileInputVertex("Input 2", jg);
-			i2.setFileInputClass(FileLineReader.class);
-			i2.setFilePath(new Path(inputFile2.toURI()));
+			i1.setInputClass((Class<AbstractInputTask<?>>) (Class<?>) DataSourceTask.class);
+			TextInputFormat inputFormat1 = new TextInputFormat();
+			inputFormat1.setFilePath(new Path(inputFile1.toURI()));
+			i1.setInputFormat(inputFormat1);
+			final JobInputVertex i2 = new JobInputVertex("Input 2", jg);
 			i2.setNumberOfSubtasks(2);
+			i2.setInputClass((Class<AbstractInputTask<?>>) (Class<?>) DataSourceTask.class);
+			TextInputFormat inputFormat2 = new TextInputFormat();
+			inputFormat2.setFilePath(new Path(inputFile2.toURI()));
+			i2.setInputFormat(inputFormat2);
+
 
 			// task vertex
 			final JobTaskVertex t1 = new JobTaskVertex("Task 1", jg);
@@ -597,17 +605,20 @@ public class ExecutionGraphTest {
 			t3.setTaskClass(ForwardTask2Inputs1Output.class);
 			t3.setNumberOfSubtasks(2);
 
-			
 			// output vertex
-			final JobFileOutputVertex o1 = new JobFileOutputVertex("Output 1", jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(outputFile.toURI()));
+			final JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
 			o1.setNumberOfSubtasks(2);
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat();
+			outputFormat.setOutputFilePath(new Path(outputFile.toURI()));
+			o1.setOutputFormat(outputFormat);
+
 			i1.setVertexToShareInstancesWith(t1);
 			t1.setVertexToShareInstancesWith(t3);
 			i2.setVertexToShareInstancesWith(t2);
 			t2.setVertexToShareInstancesWith(t3);
 			t3.setVertexToShareInstancesWith(o1);
+
 
 			// connect vertices
 			i1.connectTo(t1);
@@ -823,17 +834,22 @@ public class ExecutionGraphTest {
 			final JobGraph jg = new JobGraph("Job Graph 1");
 			jobID = jg.getJobID();
 
-			// input vertex
-			final JobFileInputVertex i1 = new JobFileInputVertex("Input 1", jg);
-			i1.setFileInputClass(FileLineReader.class);
-			i1.setFilePath(new Path(inputFile1.toURI()));
+
+			//input vertex
+			final JobInputVertex i1 = new JobInputVertex("Input 1", jg);
 			i1.setNumberOfSubtasks(4);
 			i1.setNumberOfSubtasksPerInstance(2);
-			final JobFileInputVertex i2 = new JobFileInputVertex("Input 2", jg);
-			i2.setFileInputClass(FileLineReader.class);
-			i2.setFilePath(new Path(inputFile2.toURI()));
+			i1.setInputClass((Class<AbstractInputTask<?>>) (Class<?>) DataSourceTask.class);
+			TextInputFormat inputFormat1 = new TextInputFormat();
+			inputFormat1.setFilePath(new Path(inputFile1.toURI()));
+			i1.setInputFormat(inputFormat1);
+			final JobInputVertex i2 = new JobInputVertex("Input 2", jg);
 			i2.setNumberOfSubtasks(4);
 			i2.setNumberOfSubtasksPerInstance(2);
+			i2.setInputClass((Class<AbstractInputTask<?>>) (Class<?>) DataSourceTask.class);
+			TextInputFormat inputFormat2 = new TextInputFormat();
+			inputFormat2.setFilePath(new Path(inputFile2.toURI()));
+			i2.setInputFormat(inputFormat2);
 			// task vertex
 			final JobTaskVertex t1 = new JobTaskVertex("Task 1", jg);
 			t1.setTaskClass(ForwardTask1Input1Output.class);
@@ -851,17 +867,22 @@ public class ExecutionGraphTest {
 			t4.setTaskClass(ForwardTask1Input2Outputs.class);
 			t4.setNumberOfSubtasks(8);
 			t4.setNumberOfSubtasksPerInstance(4);
+
 			// output vertex
-			final JobFileOutputVertex o1 = new JobFileOutputVertex("Output 1", jg);
-			o1.setFileOutputClass(FileLineWriter.class);
-			o1.setFilePath(new Path(outputFile1.toURI()));
+			final JobOutputVertex o1 = new JobOutputVertex("Output 1", jg);
 			o1.setNumberOfSubtasks(4);
 			o1.setNumberOfSubtasksPerInstance(2);
-			final JobFileOutputVertex o2 = new JobFileOutputVertex("Output 2", jg);
-			o2.setFileOutputClass(FileLineWriter.class);
-			o2.setFilePath(new Path(outputFile2.toURI()));
+			o1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat1 = new CsvOutputFormat();
+			outputFormat1.setOutputFilePath(new Path(outputFile1.toURI()));
+			o1.setOutputFormat(outputFormat1);
+			final JobOutputVertex o2 = new JobOutputVertex("Output 1", jg);
 			o2.setNumberOfSubtasks(4);
 			o2.setNumberOfSubtasksPerInstance(2);
+			o2.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat2 = new CsvOutputFormat();
+			outputFormat2.setOutputFilePath(new Path(outputFile2.toURI()));
+			o2.setOutputFormat(outputFormat2);
 			o1.setVertexToShareInstancesWith(o2);
 
 			// connect vertices
@@ -955,11 +976,13 @@ public class ExecutionGraphTest {
 			final JobGraph jg = new JobGraph("Self Cross Test Job");
 			jobID = jg.getJobID();
 
-			// input vertex
-			final JobFileInputVertex input = new JobFileInputVertex(inputTaskName, jg);
-			input.setFileInputClass(SelfCrossInputTask.class);
-			input.setFilePath(new Path(inputFile1.toURI()));
+			//input vertex
+			final JobInputVertex input = new JobInputVertex(inputTaskName, jg);
 			input.setNumberOfSubtasks(degreeOfParallelism);
+			input.setInputClass((Class<AbstractInputTask<?>>) (Class<?>) DataSourceTask.class);
+			TextInputFormat inputFormat = new TextInputFormat();
+			inputFormat.setFilePath(new Path(inputFile1.toURI()));
+			input.setInputFormat(inputFormat);
 
 			// cross vertex
 			final JobTaskVertex cross = new JobTaskVertex(crossTaskName, jg);
@@ -967,10 +990,13 @@ public class ExecutionGraphTest {
 			cross.setNumberOfSubtasks(degreeOfParallelism);
 
 			// output vertex
-			final JobFileOutputVertex output = new JobFileOutputVertex(outputTaskName, jg);
-			output.setFileOutputClass(FileLineWriter.class);
-			output.setFilePath(new Path(outputFile1.toURI()));
+			final JobOutputVertex output = new JobOutputVertex(outputTaskName, jg);
 			output.setNumberOfSubtasks(degreeOfParallelism);
+			output.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat = new CsvOutputFormat();
+			outputFormat.setOutputFilePath(new Path(outputFile1.toURI()));
+			output.setOutputFormat(outputFormat);
+
 
 			// connect vertices
 			input.connectTo(cross, ChannelType.IN_MEMORY, 0, 0,
@@ -1085,11 +1111,13 @@ public class ExecutionGraphTest {
 			final JobGraph jg = new JobGraph("Instance Sharing Test Job");
 			jobID = jg.getJobID();
 
-			// input vertex
-			final JobFileInputVertex input1 = new JobFileInputVertex("Input 1", jg);
-			input1.setFileInputClass(FileLineReader.class);
-			input1.setFilePath(new Path(inputFile1.toURI()));
+			//input vertex
+			final JobInputVertex input1 = new JobInputVertex("Input 1", jg);
 			input1.setNumberOfSubtasks(degreeOfParallelism);
+			input1.setInputClass((Class<AbstractInputTask<?>>) (Class<?>) DataSourceTask.class);
+			TextInputFormat inputFormat1 = new TextInputFormat();
+			inputFormat1.setFilePath(new Path(inputFile1.toURI()));
+			input1.setInputFormat(inputFormat1);
 
 			// forward vertex 1
 			final JobTaskVertex forward1 = new JobTaskVertex("Forward 1", jg);
@@ -1106,11 +1134,13 @@ public class ExecutionGraphTest {
 			forward3.setTaskClass(ForwardTask1Input1Output.class);
 			forward3.setNumberOfSubtasks(degreeOfParallelism);
 
-			// output vertex
-			final JobFileOutputVertex output1 = new JobFileOutputVertex("Output 1", jg);
-			output1.setFileOutputClass(FileLineWriter.class);
-			output1.setFilePath(new Path(outputFile1.toURI()));
+			// output 1
+			final JobOutputVertex output1 = new JobOutputVertex("Output 1", jg);
 			output1.setNumberOfSubtasks(degreeOfParallelism);
+			output1.setOutputClass(DataSinkTask.class);
+			CsvOutputFormat outputFormat1 = new CsvOutputFormat();
+			outputFormat1.setOutputFilePath(new Path(outputFile1.toURI()));
+			output1.setOutputFormat(outputFormat1);
 
 			// connect vertices
 			input1.connectTo(forward1, ChannelType.IN_MEMORY,

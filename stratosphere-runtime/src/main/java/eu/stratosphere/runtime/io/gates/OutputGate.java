@@ -79,7 +79,7 @@ public class OutputGate extends Gate<IOReadableWritable> {
 		int numChannels = descriptor.getNumberOfChannelDescriptors();
 		this.channels = new OutputChannel[numChannels];
 
-		ChannelType type = descriptor.getChannelType();
+		setChannelType(descriptor.getChannelType());
 
 		for (int i = 0; i < numChannels; i++) {
 			ChannelDeploymentDescriptor channelDescriptor = descriptor.getChannelDescriptor(i);
@@ -87,7 +87,7 @@ public class OutputGate extends Gate<IOReadableWritable> {
 			ChannelID id = channelDescriptor.getOutputChannelID();
 			ChannelID connectedId = channelDescriptor.getInputChannelID();
 
-			this.channels[i] = new OutputChannel(this, i, id, connectedId, type);
+			this.channels[i] = new OutputChannel(this, i, id, connectedId, getChannelType());
 		}
 	}
 
