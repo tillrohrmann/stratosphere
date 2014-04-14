@@ -23,6 +23,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 
+import org.apache.commons.lang3.Validate;
+
+import eu.stratosphere.api.common.InvalidProgramException;
 import eu.stratosphere.api.common.JobExecutionResult;
 import eu.stratosphere.api.common.io.InputFormat;
 import eu.stratosphere.api.java.io.CollectionInputFormat;
@@ -38,7 +41,7 @@ import eu.stratosphere.api.java.operators.translation.JavaPlan;
 import eu.stratosphere.api.java.typeutils.BasicTypeInfo;
 import eu.stratosphere.api.java.typeutils.TypeExtractor;
 import eu.stratosphere.api.java.typeutils.TypeInformation;
-import eu.stratosphere.api.java.typeutils.Typed;
+import eu.stratosphere.api.java.typeutils.ResultTypeQueryable;
 import eu.stratosphere.api.java.typeutils.ValueTypeInfo;
 import eu.stratosphere.core.fs.Path;
 import eu.stratosphere.types.StringValue;
@@ -95,15 +98,13 @@ public abstract class ExecutionEnvironment {
 	// ---------------------------------- Text Input Format ---------------------------------------
 	
 	public DataSet<String> readTextFile(String filePath) {
-		if (filePath == null)
-			throw new IllegalArgumentException("The file path may not be null.");
+		Validate.notNull(filePath, "The file path may not be null.");
 		
 		return new DataSource<String>(this, new TextInputFormat(new Path(filePath)), BasicTypeInfo.STRING_TYPE_INFO );
 	}
 	
 	public DataSet<String> readTextFile(String filePath, String charsetName) {
-		if (filePath == null)
-			throw new IllegalArgumentException("The file path may not be null.");
+		Validate.notNull(filePath, "The file path may not be null.");
 
 		TextInputFormat format = new TextInputFormat(new Path(filePath));
 		format.setCharsetName(charsetName);
@@ -113,15 +114,13 @@ public abstract class ExecutionEnvironment {
 	// -------------------------- Text Input Format With String Value------------------------------
 	
 	public DataSet<StringValue> readTextFileWithValue(String filePath) {
-		if (filePath == null)
-			throw new IllegalArgumentException("The file path may not be null.");
+		Validate.notNull(filePath, "The file path may not be null.");
 		
 		return new DataSource<StringValue>(this, new TextValueInputFormat(new Path(filePath)), new ValueTypeInfo<StringValue>(StringValue.class) );
 	}
 	
 	public DataSet<StringValue> readTextFileWithValue(String filePath, String charsetName, boolean skipInvalidLines) {
-		if (filePath == null)
-			throw new IllegalArgumentException("The file path may not be null.");
+		Validate.notNull(filePath, "The file path may not be null.");
 		
 		TextValueInputFormat format = new TextValueInputFormat(new Path(filePath));
 		format.setCharsetName(charsetName);
@@ -146,12 +145,18 @@ public abstract class ExecutionEnvironment {
 			throw new IllegalArgumentException("InputFormat must not be null.");
 		}
 		
-		@SuppressWarnings("unchecked")
-		TypeInformation<X> producedType = (inputFormat instanceof Typed) ?
-				(TypeInformation<X>) ((Typed) inputFormat).getProducedType() :
-				TypeExtractor.extractInputFormatTypes(inputFormat);
-		
-		return createInput(inputFormat, producedType);
+		try {
+			@SuppressWarnings("unchecked")
+			TypeInformation<X> producedType = (inputFormat instanceof ResultTypeQueryable) ?
+					((ResultTypeQueryable<X>) inputFormat).getProducedType() :
+					TypeExtractor.extractInputFormatTypes(inputFormat);
+			
+			return createInput(inputFormat, producedType);
+		}
+		catch (Exception e) {
+			throw new InvalidProgramException("The type returned by the input format could not be automatically determined. " +
+					"Please specify the TypeInformation of the produced type explicitly.");
+		}
 	}
 	
 	public <X> DataSet<X> createInput(InputFormat<X, ?> inputFormat, TypeInformation<X> producedType) {
@@ -175,7 +180,7 @@ public abstract class ExecutionEnvironment {
 		
 		X firstValue = data.iterator().next();
 		
-		return fromCollection(data, TypeInformation.getForObject(firstValue));
+		return fromCollection(data, TypeExtractor.getForObject(firstValue));
 	}
 	
 	
@@ -186,7 +191,7 @@ public abstract class ExecutionEnvironment {
 	}
 	
 	public <X> DataSet<X> fromCollection(Iterator<X> data, Class<X> type) {
-		return fromCollection(data, TypeInformation.getForClass(type));
+		return fromCollection(data, TypeExtractor.getForClass(type));
 	}
 	
 	public <X> DataSet<X> fromCollection(Iterator<X> data, TypeInformation<X> type) {
@@ -212,12 +217,12 @@ public abstract class ExecutionEnvironment {
 			throw new IllegalArgumentException("The number of elements must not be zero.");
 		}
 		
-		return fromCollection(Arrays.asList(data), TypeInformation.getForObject(data[0]));
+		return fromCollection(Arrays.asList(data), TypeExtractor.getForObject(data[0]));
 	}
 	
 	
 	public <X> DataSet<X> fromParallelCollection(SplittableIterator<X> iterator, Class<X> type) {
-		return fromParallelCollection(iterator, TypeInformation.getForClass(type));
+		return fromParallelCollection(iterator, TypeExtractor.getForClass(type));
 	}
 	
 	
@@ -248,7 +253,7 @@ public abstract class ExecutionEnvironment {
 	
 	public JavaPlan createProgramPlan(String jobName) {
 		if (this.sinks.isEmpty()) {
-			throw new RuntimeException("No data sinks have been created yet.");
+			throw new RuntimeException("No data sinks have been created yet. A program needs at least one sink that consumes data. Examples are writing the data set or printing it.");
 		}
 		
 		if (jobName == null) {

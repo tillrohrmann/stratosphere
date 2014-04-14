@@ -16,6 +16,7 @@ package eu.stratosphere.compiler.plan;
 import static eu.stratosphere.compiler.plan.PlanNode.SourceAndDamReport.FOUND_SOURCE;
 import static eu.stratosphere.compiler.plan.PlanNode.SourceAndDamReport.FOUND_SOURCE_AND_DAM;
 
+import eu.stratosphere.api.common.operators.util.FieldList;
 import eu.stratosphere.api.common.typeutils.TypeComparatorFactory;
 import eu.stratosphere.api.common.typeutils.TypeSerializerFactory;
 import eu.stratosphere.compiler.CompilerException;
@@ -51,6 +52,8 @@ public class WorksetIterationPlanNode extends DualInputPlanNode implements Itera
 	private boolean immediateSolutionSetUpdate;
 	
 	public Object postPassHelper;
+	
+	private TypeSerializerFactory<?> serializerForIterationChannel;
 	
 	// --------------------------------------------------------------------------------------------
 
@@ -110,6 +113,10 @@ public class WorksetIterationPlanNode extends DualInputPlanNode implements Itera
 		return this.immediateSolutionSetUpdate;
 	}
 	
+	public FieldList getSolutionSetKeyFields() {
+		return getIterationNode().getSolutionSetKeyFields();
+	}
+	
 	// --------------------------------------------------------------------------------------------
 	
 	public TypeSerializerFactory<?> getWorksetSerializer() {
@@ -140,8 +147,8 @@ public class WorksetIterationPlanNode extends DualInputPlanNode implements Itera
 	
 	public void setCosts(Costs nodeCosts) {
 		// add the costs from the step function
-		nodeCosts.addCosts(this.solutionSetDeltaPlanNode.getCumulativeCosts());
-		nodeCosts.addCosts(this.nextWorkSetPlanNode.getCumulativeCosts());
+		nodeCosts.addCosts(this.solutionSetDeltaPlanNode.getCumulativeCostsShare());
+		nodeCosts.addCosts(this.nextWorkSetPlanNode.getCumulativeCostsShare());
 		
 		// we have to subtract that which is double. sanity check that there are branches
 		TwoInputNode auxJoiner = getIterationNode().getSingleRootOfStepFunction();
@@ -149,12 +156,6 @@ public class WorksetIterationPlanNode extends DualInputPlanNode implements Itera
 			throw new CompilerException("Error: No branch in step function between Solution Set Delta and Next Workset.");
 		}
 
-		// get the cumulative costs of the last joined branching node
-		for (OptimizerNode joinedBrancher : auxJoiner.getJoinedBranchers()) {
-			PlanNode lastCommonChild = this.solutionSetDeltaPlanNode.branchPlan.get(joinedBrancher);
-			Costs douleCounted = lastCommonChild.getCumulativeCosts();
-			nodeCosts.subtractCosts(douleCounted);
-		}
 		super.setCosts(nodeCosts);
 	}
 	
@@ -246,5 +247,15 @@ public class WorksetIterationPlanNode extends DualInputPlanNode implements Itera
 				this.branchPlan.put(brancher, selectedCandidate);
 			}
 		}
+	}
+	
+	// --------------------------------------------------------------------------------------------
+	
+	public TypeSerializerFactory<?> getSerializerForIterationChannel() {
+		return serializerForIterationChannel;
+	}
+	
+	public void setSerializerForIterationChannel(TypeSerializerFactory<?> serializerForIterationChannel) {
+		this.serializerForIterationChannel = serializerForIterationChannel;
 	}
 }

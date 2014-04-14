@@ -30,6 +30,7 @@ import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 
+import eu.stratosphere.configuration.ConfigConstants;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.log4j.Level;
@@ -51,12 +52,9 @@ public abstract class AbstractTestBase {
 	
 	protected final Configuration config;
 	
-	private final List<File> tempFiles;
-	
-	
 	protected NepheleMiniCluster executor;
 	
-	protected boolean printTimings;
+	private final List<File> tempFiles;
 	
 		
 	public AbstractTestBase(Configuration config) {
@@ -80,18 +78,10 @@ public abstract class AbstractTestBase {
 	
 	@Before
 	public void startCluster() throws Exception {
-		long start = System.nanoTime();
-		
 		this.executor = new NepheleMiniCluster();
 		this.executor.setDefaultOverwriteFiles(true);
 		
-		this.executor.start();
-		
-		long stop = System.nanoTime();
-		
-		if (printTimings) {
-			System.out.println("Starting local cluster took " + ((stop - start) / 1000000) + " msecs");
-		}
+		this.executor.start(config.getInteger(ConfigConstants.LOCAL_INSTANCE_MANAGER_NUMBER_TASK_MANAGER, 1));
 	}
 
 	@After
@@ -177,7 +167,7 @@ public abstract class AbstractTestBase {
 		return getResultReader(resultPath, false);
 	}
 	
-	public static BufferedReader[] getResultReader(String resultPath, boolean inOrderOfFiles) throws IOException {
+	public BufferedReader[] getResultReader(String resultPath, boolean inOrderOfFiles) throws IOException {
 		File[] files = getAllInvolvedFiles(resultPath);
 		
 		if (inOrderOfFiles) {
@@ -255,7 +245,7 @@ public abstract class AbstractTestBase {
 		Assert.assertArrayEquals(expected, result);
 	}
 	
-	private static File[] getAllInvolvedFiles(String resultPath) {
+	private File[] getAllInvolvedFiles(String resultPath) {
 		File result = asFile(resultPath);
 		if (!result.exists()) {
 			Assert.fail("Result file was not written");
@@ -267,7 +257,7 @@ public abstract class AbstractTestBase {
 		}
 	}
 	
-	public static File asFile(String path) {
+	public File asFile(String path) {
 		try {
 			URI uri = new URI(path);
 			if (uri.getScheme().equals("file")) {

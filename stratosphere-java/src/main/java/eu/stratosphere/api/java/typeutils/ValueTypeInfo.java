@@ -16,6 +16,7 @@ package eu.stratosphere.api.java.typeutils;
 
 import eu.stratosphere.api.common.typeutils.TypeSerializer;
 import eu.stratosphere.api.common.typeutils.TypeComparator;
+import eu.stratosphere.api.java.functions.InvalidTypesException;
 import eu.stratosphere.api.java.typeutils.runtime.CopyableValueSerializer;
 import eu.stratosphere.types.CopyableValue;
 import eu.stratosphere.types.Key;
@@ -81,18 +82,35 @@ public class ValueTypeInfo<T extends Value> extends TypeInformation<T> implement
 		throw new UnsupportedOperationException("Value comparators not yet implemented.");
 	}
 	
+	// --------------------------------------------------------------------------------------------
+	
+	@Override
+	public int hashCode() {
+		return type.hashCode() ^ 0xd3a2646c;
+	}
+	
+	@Override
+	public boolean equals(Object obj) {
+		if (obj.getClass() == ValueTypeInfo.class) {
+			return type == ((ValueTypeInfo<?>) obj).type;
+		} else {
+			return false;
+		}
+	}
+	
 	@Override
 	public String toString() {
 		return "ValueType<" + type.getName() + ">";
 	}
 	
+	// --------------------------------------------------------------------------------------------
 	
 	static final <X extends Value> TypeInformation<X> getValueTypeInfo(Class<X> typeClass) {
-		if (Value.class.isAssignableFrom(typeClass)) {
+		if (Value.class.isAssignableFrom(typeClass) && !typeClass.equals(Value.class)) {
 			return new ValueTypeInfo<X>(typeClass);
 		}
 		else {
-			throw new IllegalArgumentException("The given class is no subclass of " + Value.class.getName());
+			throw new InvalidTypesException("The given class is no subclass of " + Value.class.getName());
 		}
 	}
 }
