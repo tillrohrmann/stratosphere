@@ -202,28 +202,10 @@ public class RuntimeEnvironment implements Environment, BufferProvider, LocalBuf
 			this.outputGates.get(i).initializeChannels(tdd.getOutputGateDescriptor(i));
 		}
 
-		final int noigdd = tdd.getNumberOfInputGateDescriptors();
-		for (int i = 0; i < noigdd; ++i) {
-			final GateDeploymentDescriptor gdd = tdd.getInputGateDescriptor(i);
-			final InputGate ig = this.inputGates.get(i);
-			final ChannelType channelType = gdd.getChannelType();
-			ig.setChannelType(channelType);
+		int numInputGates = tdd.getNumberOfInputGateDescriptors();
 
-			final int nicdd = gdd.getNumberOfChannelDescriptors();
-			for (int j = 0; j < nicdd; ++j) {
-
-				final ChannelDeploymentDescriptor cdd = gdd.getChannelDescriptor(j);
-				switch (channelType) {
-				case NETWORK:
-					ig.createNetworkInputChannel(ig, cdd.getInputChannelID(), cdd.getOutputChannelID());
-					break;
-				case IN_MEMORY:
-					ig.createInMemoryInputChannel(ig, cdd.getInputChannelID(), cdd.getOutputChannelID());
-					break;
-				default:
-					throw new IllegalStateException("Unknown channel type");
-				}
-			}
+		for(int i = 0; i < numInputGates; i++){
+			this.inputGates.get(i).initializeChannels(tdd.getInputGateDescriptor(i));
 		}
 	}
 
