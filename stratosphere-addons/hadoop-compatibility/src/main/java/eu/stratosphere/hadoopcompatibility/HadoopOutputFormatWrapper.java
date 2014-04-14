@@ -126,6 +126,9 @@ public class HadoopOutputFormatWrapper<K,V> implements OutputFormat<Record> {
 		fileOutputCommitterWrapper = (FileOutputCommitterWrapper) in.readObject();
 	}
 
+	@Override
+	public void initialize(Configuration configuration) {}
+
 
 	public void setJobConf(JobConf job) {
 		this.jobConf = job;

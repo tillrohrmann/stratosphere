@@ -52,9 +52,12 @@ public abstract class AbstractTestBase {
 	
 	protected final Configuration config;
 	
+	private final List<File> tempFiles;
+	
+	
 	protected NepheleMiniCluster executor;
 	
-	private final List<File> tempFiles;
+	protected boolean printTimings;
 	
 		
 	public AbstractTestBase(Configuration config) {
@@ -78,10 +81,18 @@ public abstract class AbstractTestBase {
 	
 	@Before
 	public void startCluster() throws Exception {
+		long start = System.nanoTime();
+		
 		this.executor = new NepheleMiniCluster();
 		this.executor.setDefaultOverwriteFiles(true);
 		
 		this.executor.start(config.getInteger(ConfigConstants.LOCAL_INSTANCE_MANAGER_NUMBER_TASK_MANAGER, 1));
+		
+		long stop = System.nanoTime();
+		
+		if (printTimings) {
+			System.out.println("Starting local cluster took " + ((stop - start) / 1000000) + " msecs");
+		}
 	}
 
 	@After
@@ -167,7 +178,7 @@ public abstract class AbstractTestBase {
 		return getResultReader(resultPath, false);
 	}
 	
-	public BufferedReader[] getResultReader(String resultPath, boolean inOrderOfFiles) throws IOException {
+	public static BufferedReader[] getResultReader(String resultPath, boolean inOrderOfFiles) throws IOException {
 		File[] files = getAllInvolvedFiles(resultPath);
 		
 		if (inOrderOfFiles) {
@@ -245,7 +256,7 @@ public abstract class AbstractTestBase {
 		Assert.assertArrayEquals(expected, result);
 	}
 	
-	private File[] getAllInvolvedFiles(String resultPath) {
+	private static File[] getAllInvolvedFiles(String resultPath) {
 		File result = asFile(resultPath);
 		if (!result.exists()) {
 			Assert.fail("Result file was not written");
@@ -257,7 +268,7 @@ public abstract class AbstractTestBase {
 		}
 	}
 	
-	public File asFile(String path) {
+	public static File asFile(String path) {
 		try {
 			URI uri = new URI(path);
 			if (uri.getScheme().equals("file")) {

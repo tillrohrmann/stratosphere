@@ -35,4 +35,7 @@ public class DiscardingOuputFormat<T> implements OutputFormat<T> {
 
 	@Override
 	public void close() {}
+
+	@Override
+	public void initialize(Configuration configuration) {}
 }

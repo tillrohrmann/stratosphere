@@ -266,4 +266,7 @@ public class JDBCOutputFormat<OUT extends Tuple> implements OutputFormat<OUT> {
 		}
 	}
 
+	@Override
+	public void initialize(Configuration configuration) {}
+
 }

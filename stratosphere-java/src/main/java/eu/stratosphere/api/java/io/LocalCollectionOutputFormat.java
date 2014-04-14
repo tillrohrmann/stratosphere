@@ -88,4 +88,7 @@ public class LocalCollectionOutputFormat<T> implements OutputFormat<T>, InputTyp
 		this.typeSerializer = (TypeSerializer<T>)type.createSerializer();
 	}
 
+	@Override
+	public void initialize(Configuration configuration) {}
+
 }
