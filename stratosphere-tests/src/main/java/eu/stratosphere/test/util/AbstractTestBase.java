@@ -73,6 +73,10 @@ public abstract class AbstractTestBase {
 		Assert.assertTrue("Insufficient java heap space " + heap + "mb - set JVM option: -Xmx" + MINIMUM_HEAP_SIZE_MB
 				+ "m", heap > MINIMUM_HEAP_SIZE_MB - 50);
 	}
+
+	protected NepheleMiniCluster createCluster() {
+		return new NepheleMiniCluster();
+	}
 	
 
 	// --------------------------------------------------------------------------------------------
@@ -83,7 +87,7 @@ public abstract class AbstractTestBase {
 	public void startCluster() throws Exception {
 		long start = System.nanoTime();
 		
-		this.executor = new NepheleMiniCluster();
+		this.executor = createCluster();
 		this.executor.setDefaultOverwriteFiles(true);
 		
 		this.executor.start(config.getInteger(ConfigConstants.LOCAL_INSTANCE_MANAGER_NUMBER_TASK_MANAGER, 1));

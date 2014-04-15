@@ -142,7 +142,8 @@ public class JobManagerITCase {
 			JobManager jobManager;
 
 			try {
-				jobManager = new JobManager(ExecutionMode.LOCAL);
+				jobManager = new JobManager();
+				jobManager.initialize(ExecutionMode.LOCAL);
 			}
 			catch (Exception e) {
 				e.printStackTrace();

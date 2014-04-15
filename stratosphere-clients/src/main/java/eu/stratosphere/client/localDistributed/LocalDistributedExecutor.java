@@ -35,6 +35,7 @@ import eu.stratosphere.nephele.instance.local.LocalTaskManagerThread;
 import eu.stratosphere.nephele.jobgraph.JobGraph;
 import eu.stratosphere.nephele.jobmanager.JobManager;
 import eu.stratosphere.nephele.jobmanager.JobManager.ExecutionMode;
+import eu.stratosphere.nephele.taskmanager.TaskManager;
 
 /**
  * This executor allows to execute jobs locally on a single machine using multiple task managers.
@@ -92,7 +93,8 @@ public class LocalDistributedExecutor extends PlanExecutor {
 		// start job manager
 		JobManager jobManager;
 		try {
-			jobManager = new JobManager(ExecutionMode.CLUSTER);
+			jobManager = new JobManager();
+			jobManager.initialize(ExecutionMode.CLUSTER);
 		}
 		catch (Exception e) {
 			e.printStackTrace();
@@ -116,8 +118,15 @@ public class LocalDistributedExecutor extends PlanExecutor {
 
 			GlobalConfiguration.includeConfiguration(tmConf);
 
+			TaskManager taskManager;
+			try{
+				taskManager = new TaskManager(numTaskMgr);
+			}catch(Exception e){
+				throw new RuntimeException(e);
+			}
+
 			LocalTaskManagerThread t = new LocalTaskManagerThread(
-					"LocalDistributedExecutor: LocalTaskManagerThread-#" + tm, numTaskMgr);
+					"LocalDistributedExecutor: LocalTaskManagerThread-#" + tm, taskManager);
 
 			t.start();
 			taskManagerThreads.add(t);

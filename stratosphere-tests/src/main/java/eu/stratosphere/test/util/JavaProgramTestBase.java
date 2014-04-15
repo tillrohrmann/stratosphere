@@ -36,7 +36,7 @@ public abstract class JavaProgramTestBase extends AbstractTestBase {
 	
 	private JobExecutionResult latestExecutionResult;
 	
-	private int degreeOfParallelism = DEFAULT_DEGREE_OF_PARALLELISM;
+	protected int degreeOfParallelism = DEFAULT_DEGREE_OF_PARALLELISM;
 	
 	
 	public JavaProgramTestBase() {
@@ -92,9 +92,9 @@ public abstract class JavaProgramTestBase extends AbstractTestBase {
 		}
 		
 		// prepare the test environment
-		TestEnvironment env = new TestEnvironment(this.executor, this.degreeOfParallelism, this.printTimings);
+		TestEnvironment env = createTestEnvironment();
 		env.setAsContext();
-		
+
 		// call the test program
 		try {
 			testProgram();
@@ -125,8 +125,12 @@ public abstract class JavaProgramTestBase extends AbstractTestBase {
 			Assert.fail("Post-submit work caused an error: " + e.getMessage());
 		}
 	}
+
+	protected TestEnvironment createTestEnvironment(){
+		return new TestEnvironment(this.executor, this.degreeOfParallelism, this.printTimings);
+	}
 	
-	private static final class TestEnvironment extends ExecutionEnvironment {
+	protected static class TestEnvironment extends ExecutionEnvironment {
 
 		private final NepheleMiniCluster executor;
 		
@@ -135,11 +139,11 @@ public abstract class JavaProgramTestBase extends AbstractTestBase {
 		private JobExecutionResult latestResult;
 		
 		
-		private TestEnvironment(NepheleMiniCluster executor, int degreeOfParallelism) {
+		protected TestEnvironment(NepheleMiniCluster executor, int degreeOfParallelism) {
 			this(executor, degreeOfParallelism, false);
 		}
 		
-		private TestEnvironment(NepheleMiniCluster executor, int degreeOfParallelism, boolean printTimings) {
+		protected TestEnvironment(NepheleMiniCluster executor, int degreeOfParallelism, boolean printTimings) {
 			this.executor = executor;
 			this.printTimings = printTimings;
 			setDegreeOfParallelism(degreeOfParallelism);
@@ -150,10 +154,10 @@ public abstract class JavaProgramTestBase extends AbstractTestBase {
 			try {
 				long compileStart = System.nanoTime();
 				OptimizedPlan op = compileProgram(jobName);
-				
-				NepheleJobGraphGenerator jgg = new NepheleJobGraphGenerator();
-				JobGraph jobGraph = jgg.compileJobGraph(op);
-				
+
+				JobGraph jobGraph = compileJobGraph(op);
+
+
 				if (printTimings) {
 					long compileStop = System.nanoTime();
 					System.out.println("Compilation took " + ((compileStop - compileStart) / 1000000) + " msecs");
@@ -191,12 +195,17 @@ public abstract class JavaProgramTestBase extends AbstractTestBase {
 		}
 		
 		
-		private OptimizedPlan compileProgram(String jobName) {
+		protected OptimizedPlan compileProgram(String jobName) {
 			Plan p = createProgramPlan(jobName);
 			p.setDefaultParallelism(getDegreeOfParallelism());
 			
 			PactCompiler pc = new PactCompiler(new DataStatistics());
 			return pc.compile(p);
+		}
+
+		protected JobGraph compileJobGraph(OptimizedPlan op){
+			NepheleJobGraphGenerator jgg = new NepheleJobGraphGenerator();
+			return jgg.compileJobGraph(op);
 		}
 		
 		private void setAsContext() {

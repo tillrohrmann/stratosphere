@@ -186,7 +186,8 @@ public class NepheleMiniCluster {
 			GlobalConfiguration.includeConfiguration(tmConf);
 			
 			// start the job manager
-			jobManager = new JobManager(ExecutionMode.LOCAL);
+			jobManager = createJobManager();
+			jobManager.initialize(ExecutionMode.LOCAL);
 			runner = new Thread("JobManager Task Loop") {
 				@Override
 				public void run() {
@@ -214,6 +215,10 @@ public class NepheleMiniCluster {
 				runner = null;
 			}
 		}
+	}
+
+	protected JobManager createJobManager(){
+		return new JobManager();
 	}
 
 	// ------------------------------------------------------------------------

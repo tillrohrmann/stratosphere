@@ -113,16 +113,18 @@ public class LocalInstanceManager implements InstanceManager {
 	/**
 	 * Number of task managers
 	 */
-	private final int numTaskManagers;
+	private final int numTaskManager;
 
 
-
+	public LocalInstanceManager(){
+		this(new LocalTaskManagerFactory());
+	}
 
 	/**
 	 * Constructs a new local instance manager.
 	 *
 	 */
-	public LocalInstanceManager() {
+	public LocalInstanceManager(TaskManagerFactory taskManagerFactory) {
 
 		final Configuration config = GlobalConfiguration.getConfiguration();
 
@@ -145,9 +147,10 @@ public class LocalInstanceManager implements InstanceManager {
 
 		this.instanceTypeDescriptionMap = new SerializableHashMap<InstanceType, InstanceTypeDescription>();
 
-		numTaskManagers = GlobalConfiguration.getInteger(ConfigConstants
+		numTaskManager = GlobalConfiguration.getInteger(ConfigConstants
 				.LOCAL_INSTANCE_MANAGER_NUMBER_TASK_MANAGER, 1);
-		for(int i=0; i< numTaskManagers; i++){
+
+		for(int i=0; i< numTaskManager; i++){
 
 			Configuration tm = new Configuration();
 			int ipcPort = GlobalConfiguration.getInteger(ConfigConstants.TASK_MANAGER_IPC_PORT_KEY, 0);
@@ -167,11 +170,14 @@ public class LocalInstanceManager implements InstanceManager {
 
 			GlobalConfiguration.includeConfiguration(tm);
 
-			localTaskManagerThreads.add(new LocalTaskManagerThread("Local Taskmanager IO Loop #" + i,
-					numTaskManagers));
-			localTaskManagerThreads.get(i).start();
+			LocalTaskManagerThread thread = new LocalTaskManagerThread("Local Taskmanager IO Loop #" +
+					i, taskManagerFactory.create(i, getNumTaskManager()));
+			thread.start();
+			localTaskManagerThreads.add(thread);
 		}
 	}
+
+	public int getNumTaskManager() { return numTaskManager; }
 
 
 	@Override

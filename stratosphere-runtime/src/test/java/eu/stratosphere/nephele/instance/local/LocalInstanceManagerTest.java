@@ -48,7 +48,8 @@ public class LocalInstanceManagerTest {
         
 		// start JobManager
         ExecutionMode executionMode = ExecutionMode.LOCAL;
-        JobManager jm = new JobManager(executionMode);
+        JobManager jm = new JobManager();
+		jm.initialize(executionMode);
        
 		final TestInstanceListener testInstanceListener = new TestInstanceListener();
 

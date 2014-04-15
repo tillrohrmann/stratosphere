@@ -147,15 +147,15 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 
 	private Server jobManagerServer = null;
 
-	private final JobManagerProfiler profiler;
+	private JobManagerProfiler profiler;
 
-	private final EventCollector eventCollector;
+	private EventCollector eventCollector;
 	
-	private final ArchiveListener archive;
+	private ArchiveListener archive;
 
-	private final InputSplitManager inputSplitManager;
+	private InputSplitManager inputSplitManager;
 
-	private final AbstractScheduler scheduler;
+	private AbstractScheduler scheduler;
 	
 	private AccumulatorManager accumulatorManager;
 
@@ -175,10 +175,16 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 	
 	private WebInfoServer server;
 	
-	public JobManager(ExecutionMode executionMode) {
+	public JobManager() {
+		// Read the suggested client polling interval
+		this.recommendedClientPollingInterval = GlobalConfiguration.getInteger(
+			ConfigConstants.JOBCLIENT_POLLING_INTERVAL_KEY, ConfigConstants.DEFAULT_JOBCLIENT_POLLING_INTERVAL);
 
+	}
+
+	public void initialize(ExecutionMode executionMode){
 		final String ipcAddressString = GlobalConfiguration
-			.getString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, null);
+				.getString(ConfigConstants.JOB_MANAGER_IPC_ADDRESS_KEY, null);
 
 		InetAddress ipcAddress = null;
 		if (ipcAddressString != null) {
@@ -186,105 +192,123 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 				ipcAddress = InetAddress.getByName(ipcAddressString);
 			} catch (UnknownHostException e) {
 				LOG.error("Cannot convert " + ipcAddressString + " to an IP address: "
-					+ StringUtils.stringifyException(e));
+						+ StringUtils.stringifyException(e));
 				System.exit(FAILURERETURNCODE);
 			}
 		}
 
 		final int ipcPort = GlobalConfiguration.getInteger(ConfigConstants.JOB_MANAGER_IPC_PORT_KEY,
-			ConfigConstants.DEFAULT_JOB_MANAGER_IPC_PORT);
-
-
-		// Read the suggested client polling interval
-		this.recommendedClientPollingInterval = GlobalConfiguration.getInteger(
-			ConfigConstants.JOBCLIENT_POLLING_INTERVAL_KEY, ConfigConstants.DEFAULT_JOBCLIENT_POLLING_INTERVAL);
+				ConfigConstants.DEFAULT_JOB_MANAGER_IPC_PORT);
 
 		// Load the job progress collector
 		this.eventCollector = new EventCollector(this.recommendedClientPollingInterval);
-		
-		// Register simple job archive
+
 		int archived_items = GlobalConfiguration.getInteger(
 				ConfigConstants.JOB_MANAGER_WEB_ARCHIVE_COUNT, ConfigConstants.DEFAULT_JOB_MANAGER_WEB_ARCHIVE_COUNT);
-		if(archived_items > 0) {
-			this.archive = new MemoryArchivist(archived_items);
+
+		this.archive = loadArchive(archived_items);
+		if(this.archive != null){
 			this.eventCollector.registerArchivist(archive);
 		}
-		else
-			this.archive = null;
 
-		// Create the accumulator manager, with same archiving limit as web
-		// interface. We need to store the accumulators for at least one job.
-		// Otherwise they might be deleted before the client requested the
-		// accumulator results.
-		this.accumulatorManager = new AccumulatorManager(Math.min(1, archived_items));
+		this.accumulatorManager = loadAccumulatorManager(archived_items);
+		this.inputSplitManager = loadInputSplitManager();
 
-		// Load the input split manager
-		this.inputSplitManager = new InputSplitManager();
+		this.jobManagerServer = loadJobManagerServer(ipcAddress, ipcPort);
 
+		this.instanceManager = loadInstanceManager(executionMode);
+		this.scheduler = loadScheduler(executionMode);
+		this.profiler = loadProfiler(ipcAddress);
+
+		LOG.info("Starting job manager in " + executionMode + " mode");
+
+		// Add shutdown hook for clean up tasks
+		Runtime.getRuntime().addShutdownHook(new JobManagerCleanUp(this));
+	}
+
+	protected Server loadJobManagerServer(InetAddress ipcAddress, int ipcPort){
 		// Determine own RPC address
 		final InetSocketAddress rpcServerAddress = new InetSocketAddress(ipcAddress, ipcPort);
 
-		// Start job manager's IPC server
+		// start job manager's IPC server
+		Server result = null;
 		try {
 			final int handlerCount = GlobalConfiguration.getInteger(ConfigConstants.JOB_MANAGER_IPC_HANDLERS_KEY,
-				ConfigConstants.DEFAULT_JOB_MANAGER_IPC_HANDLERS);
-			this.jobManagerServer = RPC.getServer(this, rpcServerAddress.getHostName(), rpcServerAddress.getPort(),
-				handlerCount);
-			this.jobManagerServer.start();
+					ConfigConstants.DEFAULT_JOB_MANAGER_IPC_HANDLERS);
+			result = RPC.getServer(this, rpcServerAddress.getHostName(), rpcServerAddress.getPort(),
+					handlerCount);
+			result.start();
 		} catch (IOException ioe) {
 			LOG.error("Cannot start RPC server: " + StringUtils.stringifyException(ioe));
 			System.exit(FAILURERETURNCODE);
 		}
 
-		LOG.info("Starting job manager in " + executionMode + " mode");
+		return result;
+	}
 
-		// Try to load the instance manager for the given execution mode
-		// Try to load the scheduler for the given execution mode
-		if (executionMode == ExecutionMode.LOCAL) {
-			try {
-				this.instanceManager = new LocalInstanceManager();
-			} catch (RuntimeException rte) {
-				LOG.fatal("Cannot instantiate local instance manager: " + StringUtils.stringifyException(rte));
-				System.exit(FAILURERETURNCODE);
-			}
-		} else {
-			final String instanceManagerClassName = JobManagerUtils.getInstanceManagerClassName(executionMode);
-			LOG.info("Trying to load " + instanceManagerClassName + " as instance manager");
-			this.instanceManager = JobManagerUtils.loadInstanceManager(instanceManagerClassName);
-			if (this.instanceManager == null) {
-				LOG.error("Unable to load instance manager " + instanceManagerClassName);
-				System.exit(FAILURERETURNCODE);
-			}
+	protected ArchiveListener loadArchive(int archived_items){
+		if(archived_items >0){
+			return new MemoryArchivist(archived_items);
+		}else{
+			return null;
 		}
+	}
 
+	protected AccumulatorManager loadAccumulatorManager(int archived_items){
+		// Create the accumulator manager, with same archiving limit as web
+		// interface. We need to store the accumulators for at least one job.
+		// Otherwise they might be deleted before the client requested the
+		// accumulator results.
+		return new AccumulatorManager(Math.min(1, archived_items));
+	}
+
+
+	protected InputSplitManager loadInputSplitManager() {
+		return new InputSplitManager();
+	}
+
+	protected AbstractScheduler loadScheduler(ExecutionMode executionMode){
 		// Try to load the scheduler for the given execution mode
 		final String schedulerClassName = JobManagerUtils.getSchedulerClassName(executionMode);
 		LOG.info("Trying to load " + schedulerClassName + " as scheduler");
 
 		// Try to get the instance manager class name
-		this.scheduler = JobManagerUtils.loadScheduler(schedulerClassName, this, this.instanceManager);
-		if (this.scheduler == null) {
+		AbstractScheduler result = JobManagerUtils.loadScheduler(schedulerClassName, this, this.instanceManager);
+		if (result == null) {
 			LOG.error("Unable to load scheduler " + schedulerClassName);
 			System.exit(FAILURERETURNCODE);
 		}
 
+		return result;
+	}
+
+	protected JobManagerProfiler loadProfiler(InetAddress ipcAddress){
 		// Load profiler if it should be used
 		if (GlobalConfiguration.getBoolean(ProfilingUtils.ENABLE_PROFILING_KEY, false)) {
 			final String profilerClassName = GlobalConfiguration.getString(ProfilingUtils.JOBMANAGER_CLASSNAME_KEY,
-				"eu.stratosphere.nephele.profiling.impl.JobManagerProfilerImpl");
-			this.profiler = ProfilingUtils.loadJobManagerProfiler(profilerClassName, ipcAddress);
-			if (this.profiler == null) {
+					"eu.stratosphere.nephele.profiling.impl.JobManagerProfilerImpl");
+			JobManagerProfiler result = ProfilingUtils.loadJobManagerProfiler(profilerClassName, ipcAddress);
+			if (result == null) {
 				LOG.error("Cannot load profiler");
 				System.exit(FAILURERETURNCODE);
 			}
+			return result;
 		} else {
-			this.profiler = null;
 			LOG.debug("Profiler disabled");
+			return null;
+		}
+	}
+
+	protected InstanceManager loadInstanceManager(ExecutionMode executionMode) {
+		final String instanceManagerClassName = JobManagerUtils.getInstanceManagerClassName(executionMode);
+		LOG.info("Trying to load " + instanceManagerClassName + " as instance manager");
+		InstanceManager result = JobManagerUtils.loadInstanceManager(instanceManagerClassName);
+		if (result == null) {
+			LOG.error("Unable to load instance manager " + instanceManagerClassName);
+			System.exit(FAILURERETURNCODE);
 		}
 
-		// Add shutdown hook for clean up tasks
-		Runtime.getRuntime().addShutdownHook(new JobManagerCleanUp(this));
-
+		return result;
 	}
 
 	/**
@@ -394,28 +418,14 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 			root.addAppender(appender);
 			root.setLevel(Level.INFO);
 		}
-		
-		JobManager jobManager = initialize(args);
-				
-		// Start info server for jobmanager
-		jobManager.startInfoServer();
 
-		// Run the main task loop
-		jobManager.runTaskLoop();
-
-		// Clean up task are triggered through a shutdown hook
-	}
-	
-	@SuppressWarnings("static-access")
-	public static JobManager initialize(final String[] args) {
-		// output the version and revision information to the log
 		logVersionInformation();
-		
+
 		final Option configDirOpt = OptionBuilder.withArgName("config directory").hasArg()
-			.withDescription("Specify configuration directory.").create("configDir");
+				.withDescription("Specify configuration directory.").create("configDir");
 
 		final Option executionModeOpt = OptionBuilder.withArgName("execution mode").hasArg()
-			.withDescription("Specify execution mode.").create("executionMode");
+				.withDescription("Specify execution mode.").create("executionMode");
 
 		final Options options = new Options();
 		options.addOption(configDirOpt);
@@ -432,7 +442,7 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 
 		final String configDir = line.getOptionValue(configDirOpt.getOpt(), null);
 		final String executionModeName = line.getOptionValue(executionModeOpt.getOpt(), "local");
-		
+
 		ExecutionMode executionMode = null;
 		if ("local".equals(executionModeName)) {
 			executionMode = ExecutionMode.LOCAL;
@@ -442,22 +452,28 @@ public class JobManager implements DeploymentManager, ExtendedManagementProtocol
 			System.err.println("Unrecognized execution mode: " + executionModeName);
 			System.exit(FAILURERETURNCODE);
 		}
-		
+
 		// First, try to load global configuration
 		GlobalConfiguration.loadConfiguration(configDir);
 
-		// Create a new job manager object
-		JobManager jobManager = new JobManager(executionMode);
-		
 		// Set base dir for info server
 		Configuration infoserverConfig = GlobalConfiguration.getConfiguration();
 		if (configDir != null && new File(configDir).isDirectory()) {
 			infoserverConfig.setString(ConfigConstants.STRATOSPHERE_BASE_DIR_PATH_KEY, configDir+"/..");
 		}
 		GlobalConfiguration.includeConfiguration(infoserverConfig);
-		return jobManager;
-	}
+		
+		JobManager jobManager = new JobManager();
+		jobManager.initialize(executionMode);
+				
+		// Start info server for jobmanager
+		jobManager.startInfoServer();
 
+		// Run the main task loop
+		jobManager.runTaskLoop();
+
+		// Clean up task are triggered through a shutdown hook
+	}
 
 	@Override
 	public JobSubmissionResult submitJob(JobGraph job) throws IOException {
